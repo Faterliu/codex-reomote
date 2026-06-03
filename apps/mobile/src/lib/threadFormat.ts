@@ -4,7 +4,7 @@ export type TimelineEntry = {
   id: string;
   turnId?: string;
   role: "user" | "assistant" | "tool" | "system";
-  variant?: "command" | "commandGroup" | "webSearchGroup" | "turnProcessGroup";
+  variant?: "command" | "commandGroup" | "webSearchGroup" | "turnProcessGroup" | "contextCompaction";
   title: string;
   metaLabel?: string;
   timestampMs?: number;
@@ -47,6 +47,10 @@ export type TimelineFileChange = {
 };
 
 const MAX_TIMELINE_BODY_CHARS = 4000;
+
+type CollabAgentToolCallItem = Extract<ThreadItem, { type: "collabAgentToolCall" }>;
+type HookPromptItem = Extract<ThreadItem, { type: "hookPrompt" }>;
+type ImageGenerationItem = Extract<ThreadItem, { type: "imageGeneration" }>;
 
 export function formatTime(seconds: number) {
   return new Date(seconds * 1000).toLocaleString();
@@ -158,6 +162,16 @@ function itemToTimelineEntry(
   switch (item.type) {
     case "userMessage":
       return { ...formatUserMessageEntry(entryId, item.content, options.timestampMs), turnId };
+    case "hookPrompt":
+      return {
+        id: entryId,
+        turnId,
+        role: "system",
+        title: "Hook 提示",
+        timestampMs: options.timestampMs ?? undefined,
+        body: clipTimelineBody(formatHookPromptBody(item.fragments)),
+        streaming: options.streaming,
+      };
     case "agentMessage":
       return {
         id: entryId,
@@ -232,6 +246,16 @@ function itemToTimelineEntry(
         timestampMs: options.timestampMs ?? undefined,
         body: clipTimelineBody(item.namespace ? `${item.namespace}/${item.tool}` : item.tool),
       };
+    case "collabAgentToolCall":
+      return {
+        id: entryId,
+        turnId,
+        role: "tool",
+        title: formatCollabAgentToolTitle(item),
+        timestampMs: options.timestampMs ?? undefined,
+        body: clipTimelineBody(formatCollabAgentToolBody(item)),
+        streaming: options.streaming || item.status === "inProgress",
+      };
     case "webSearch": {
       const action = formatWebSearchAction(item.query, item.action);
       return {
@@ -245,16 +269,84 @@ function itemToTimelineEntry(
         webSearchActions: [{ id: entryId, ...action }],
       };
     }
-    default:
+    case "imageView":
+      return {
+        id: entryId,
+        turnId,
+        role: "assistant",
+        title: "图片",
+        timestampMs: options.timestampMs ?? undefined,
+        body: "",
+        attachments: [
+          {
+            type: "image",
+            uri: item.path,
+            label: "图片",
+          },
+        ],
+        streaming: options.streaming,
+      };
+    case "imageGeneration": {
+      const attachmentUri = getImageGenerationAttachmentUri(item);
+      return {
+        id: entryId,
+        turnId,
+        role: "assistant",
+        title: "生成图片",
+        timestampMs: options.timestampMs ?? undefined,
+        body: clipTimelineBody(formatImageGenerationBody(item, Boolean(attachmentUri))),
+        attachments: attachmentUri
+          ? [
+              {
+                type: "image",
+                uri: attachmentUri,
+                label: "生成图片",
+              },
+            ]
+          : undefined,
+        streaming: options.streaming || item.status === "inProgress",
+      };
+    }
+    case "enteredReviewMode":
+      return {
+        id: entryId,
+        turnId,
+        role: "system",
+        title: "Review 模式",
+        timestampMs: options.timestampMs ?? undefined,
+        body: clipTimelineBody(`已进入 Review 模式\n${item.review}`),
+      };
+    case "exitedReviewMode":
+      return {
+        id: entryId,
+        turnId,
+        role: "system",
+        title: "Review 模式",
+        timestampMs: options.timestampMs ?? undefined,
+        body: clipTimelineBody(`已退出 Review 模式\n${item.review}`),
+      };
+    case "contextCompaction":
+      return {
+        id: entryId,
+        turnId,
+        role: "system",
+        variant: "contextCompaction",
+        title: "系统消息",
+        timestampMs: options.timestampMs ?? undefined,
+        body: "上下文已压缩，后续回复会基于压缩后的上下文继续。",
+      };
+    default: {
+      const unhandledItem: never = item;
       return {
         // item.id 在不同 turn 之间不保证全局唯一，时间线 key 必须带上 turnId。
         id: entryId,
         turnId,
         role: "system",
-        title: item.type,
+        title: "未知消息",
         timestampMs: options.timestampMs ?? undefined,
-        body: clipTimelineBody(JSON.stringify(item, null, 2)),
+        body: clipTimelineBody(JSON.stringify(unhandledItem, null, 2)),
       };
+    }
   }
 }
 
@@ -278,6 +370,117 @@ function findLastAgentMessageIndex(items: ThreadItem[]) {
   }
 
   return -1;
+}
+
+function formatHookPromptBody(fragments: HookPromptItem["fragments"]) {
+  const body = fragments.map((fragment) => fragment.text.trim()).filter(Boolean).join("\n\n");
+  return body || "Hook 提示已注入。";
+}
+
+function formatCollabAgentToolTitle(item: CollabAgentToolCallItem) {
+  return `协作 Agent ${formatCollabAgentToolName(item.tool)} · ${formatCollabAgentStatus(item.status)}`;
+}
+
+function formatCollabAgentToolBody(item: CollabAgentToolCallItem) {
+  const lines = [
+    `工具：${formatCollabAgentToolName(item.tool)}`,
+    `状态：${formatCollabAgentStatus(item.status)}`,
+    `发起线程：${item.senderThreadId}`,
+    item.receiverThreadIds.length ? `目标线程：${item.receiverThreadIds.length} 个` : null,
+    item.model ? `模型：${item.model}` : null,
+    item.reasoningEffort ? `推理强度：${item.reasoningEffort}` : null,
+    item.prompt ? `输入：${summarizeInlineText(item.prompt, 600)}` : null,
+    Object.keys(item.agentsStates).length ? `Agent 状态：${Object.keys(item.agentsStates).length} 个` : null,
+  ].filter((line): line is string => Boolean(line));
+
+  return lines.join("\n");
+}
+
+function formatCollabAgentToolName(tool: CollabAgentToolCallItem["tool"]) {
+  switch (tool) {
+    case "spawnAgent":
+      return "启动 Agent";
+    case "sendInput":
+      return "发送输入";
+    case "resumeAgent":
+      return "恢复 Agent";
+    case "wait":
+      return "等待";
+    case "closeAgent":
+      return "关闭 Agent";
+  }
+}
+
+function formatCollabAgentStatus(status: CollabAgentToolCallItem["status"]) {
+  switch (status) {
+    case "inProgress":
+      return "进行中";
+    case "completed":
+      return "已完成";
+    case "failed":
+      return "失败";
+  }
+}
+
+function getImageGenerationAttachmentUri(item: ImageGenerationItem) {
+  if (item.savedPath) {
+    return item.savedPath;
+  }
+
+  const result = item.result.trim();
+  if (!result) {
+    return null;
+  }
+
+  if (isImageUriLike(result)) {
+    return result;
+  }
+
+  if (isLikelyBase64Image(result)) {
+    return `data:image/png;base64,${result.replace(/\s/g, "")}`;
+  }
+
+  return null;
+}
+
+function formatImageGenerationBody(item: ImageGenerationItem, hasAttachment: boolean) {
+  const lines = [
+    `图片生成：${formatImageGenerationStatus(item.status)}`,
+    item.revisedPrompt ? `提示词：${item.revisedPrompt}` : null,
+    !hasAttachment && item.result.trim() ? `结果：${summarizeInlineText(item.result.trim(), 800)}` : null,
+  ].filter((line): line is string => Boolean(line));
+
+  return lines.join("\n");
+}
+
+function formatImageGenerationStatus(status: string) {
+  switch (status) {
+    case "inProgress":
+      return "生成中";
+    case "completed":
+      return "已完成";
+    case "failed":
+      return "失败";
+    default:
+      return status || "未知";
+  }
+}
+
+function isImageUriLike(value: string) {
+  return value.startsWith("data:image/") || /^https?:\/\//.test(value) || value.startsWith("file://") || isHostFilePathLike(value);
+}
+
+function isHostFilePathLike(value: string) {
+  return value.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(value);
+}
+
+function isLikelyBase64Image(value: string) {
+  const normalized = value.replace(/\s/g, "");
+  return normalized.length > 200 && normalized.length % 4 === 0 && /^[a-zA-Z0-9+/]+={0,2}$/.test(normalized);
+}
+
+function summarizeInlineText(text: string, maxLength: number) {
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength)}...[truncated ${text.length - maxLength} chars]`;
 }
 
 function formatUserMessageEntry(id: string, content: UserInput[], timestampMs?: number | null): TimelineEntry {

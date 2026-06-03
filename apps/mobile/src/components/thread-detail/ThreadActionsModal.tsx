@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 type Props = {
   currentName: string;
@@ -44,30 +44,36 @@ export function ThreadActionsModal({ currentName, isBusy = false, canReview = tr
 
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
-      <Pressable onPress={onClose} style={styles.backdrop}>
-        <Pressable style={styles.sheet}>
-          <Text style={styles.title}>会话操作</Text>
-          <View style={styles.renameBox}>
-            <Text style={styles.label}>名称</Text>
-            <TextInput onChangeText={setName} placeholder="输入会话名称" style={styles.input} value={name} />
-            <Pressable disabled={!name.trim() || isBusy} onPress={() => void submitRename()} style={[styles.primaryButton, (!name.trim() || isBusy) && styles.disabled]}>
-              <Text style={styles.primaryText}>保存名称</Text>
+      {/* 重命名输入框位于底部 sheet 内，键盘弹起时需要单独避让 Modal 内容。 */}
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardAvoider}>
+        <Pressable onPress={onClose} style={styles.backdrop}>
+          <Pressable style={styles.sheet}>
+            <Text style={styles.title}>会话操作</Text>
+            <View style={styles.renameBox}>
+              <Text style={styles.label}>名称</Text>
+              <TextInput onChangeText={setName} placeholder="输入会话名称" placeholderTextColor="#526071" style={styles.input} value={name} />
+              <Pressable disabled={!name.trim() || isBusy} onPress={() => void submitRename()} style={[styles.primaryButton, (!name.trim() || isBusy) && styles.disabled]}>
+                <Text style={styles.primaryText}>保存名称</Text>
+              </Pressable>
+            </View>
+            <Pressable disabled={!canReview || isBusy} onPress={() => void submitReview()} style={[styles.actionButton, (!canReview || isBusy) && styles.disabled]}>
+              <Text style={styles.actionTitle}>Review 当前改动</Text>
+              <Text style={styles.actionText}>在当前会话内启动 Codex reviewer</Text>
             </Pressable>
-          </View>
-          <Pressable disabled={!canReview || isBusy} onPress={() => void submitReview()} style={[styles.actionButton, (!canReview || isBusy) && styles.disabled]}>
-            <Text style={styles.actionTitle}>Review 当前改动</Text>
-            <Text style={styles.actionText}>在当前会话内启动 Codex reviewer</Text>
-          </Pressable>
-          <Pressable disabled={isBusy} onPress={() => void submitArchive()} style={[styles.archiveButton, isBusy && styles.disabled]}>
-            <Text style={styles.archiveText}>归档会话</Text>
+            <Pressable disabled={isBusy} onPress={() => void submitArchive()} style={[styles.archiveButton, isBusy && styles.disabled]}>
+              <Text style={styles.archiveText}>归档会话</Text>
+            </Pressable>
           </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoider: {
+    flex: 1,
+  },
   backdrop: {
     backgroundColor: "rgba(24, 34, 48, 0.28)",
     flex: 1,
@@ -98,6 +104,7 @@ const styles = StyleSheet.create({
     borderColor: "#d8dee8",
     borderRadius: 12,
     borderWidth: 1,
+    color: "#182230",
     minHeight: 42,
     paddingHorizontal: 12,
   },

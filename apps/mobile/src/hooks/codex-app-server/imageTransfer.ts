@@ -115,7 +115,11 @@ function collectLocalImageAttachments(timeline: TimelineEntry[]) {
 }
 
 function isHostLocalImage(attachment: TimelineAttachment) {
-  return attachment.uri.startsWith("/") && attachment.label === "本地图片";
+  return isHostFilePath(attachment.uri);
+}
+
+function isHostFilePath(uri: string) {
+  return uri.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(uri);
 }
 
 function joinHostPath(basePath: string, childPath: string) {

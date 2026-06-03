@@ -210,6 +210,14 @@ function isCollapsibleProcessEntry(entry: TimelineEntry, options: Options) {
     return false;
   }
 
+  if (entry.attachments?.length) {
+    return false;
+  }
+
+  if (entry.variant === "contextCompaction") {
+    return false;
+  }
+
   if (hasPreservedEntry([entry], options)) {
     return false;
   }
@@ -228,7 +236,7 @@ function isCollapsibleProcessEntry(entry: TimelineEntry, options: Options) {
 function findFinalAssistantIndex(entries: TimelineEntry[]) {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    if (entry?.role === "assistant" && entry.title === "Codex" && !entry.streaming) {
+    if (entry?.role === "assistant" && entry.title === "Codex" && !entry.streaming && !entry.attachments?.length) {
       return index;
     }
   }
