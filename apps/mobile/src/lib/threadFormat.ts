@@ -18,6 +18,7 @@ export type TimelineEntry = {
   processEntries?: TimelineEntry[];
   attachments?: TimelineAttachment[];
   fileChanges?: TimelineFileChange[];
+  clientId?: string | null;
   pending?: boolean;
   failed?: boolean;
   streaming?: boolean;
@@ -161,7 +162,7 @@ function itemToTimelineEntry(
 
   switch (item.type) {
     case "userMessage":
-      return { ...formatUserMessageEntry(entryId, item.content, options.timestampMs), turnId };
+      return { ...formatUserMessageEntry(entryId, item.content, options.timestampMs, item.clientId), turnId };
     case "hookPrompt":
       return {
         id: entryId,
@@ -483,7 +484,7 @@ function summarizeInlineText(text: string, maxLength: number) {
   return text.length <= maxLength ? text : `${text.slice(0, maxLength)}...[truncated ${text.length - maxLength} chars]`;
 }
 
-function formatUserMessageEntry(id: string, content: UserInput[], timestampMs?: number | null): TimelineEntry {
+function formatUserMessageEntry(id: string, content: UserInput[], timestampMs?: number | null, clientId?: string | null): TimelineEntry {
   const bodyParts: string[] = [];
   const attachments: TimelineAttachment[] = [];
 
@@ -516,6 +517,7 @@ function formatUserMessageEntry(id: string, content: UserInput[], timestampMs?: 
     timestampMs: timestampMs ?? undefined,
     body: clipTimelineBody(bodyParts.filter(Boolean).join("\n")),
     attachments,
+    clientId,
   };
 }
 

@@ -34,6 +34,10 @@ export function reconcilePendingEntries(pendingEntries: PendingEntry[], timeline
 }
 
 function hasServerEcho(timeline: TimelineEntry[], entry: PendingEntry, consumedByText: Map<string, number>) {
+  if (entry.clientId && timeline.some((candidate) => candidate.role === "user" && candidate.clientId === entry.clientId)) {
+    return true;
+  }
+
   const normalized = normalizeMessageText(entry.sourceText);
   const consumed = consumedByText.get(normalized) ?? 0;
   const echoed = countUserText(timeline, entry.sourceText) > entry.baselineCount + consumed;

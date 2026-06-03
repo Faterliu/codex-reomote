@@ -1,5 +1,6 @@
 import type {
   ModelListResponse,
+  PermissionProfileListResponse,
   PluginInstalledResponse,
   PluginSummary,
   ReviewStartResponse,
@@ -7,6 +8,8 @@ import type {
   Thread,
   ThreadListResponse,
   ThreadResumeResponse,
+  ThreadSettingsUpdateParams,
+  ThreadSettingsUpdateResponse,
   ThreadTurnsListResponse,
   ThreadUnarchiveResponse,
   Turn,
@@ -20,45 +23,69 @@ import type { ReadinessStatus } from "@/types/codex";
 
 import type { NormalizedConnection } from "./types";
 import type { PermissionModeId } from "@/types/permissionMode";
-import { getPermissionMode, getPermissionModeSandboxPolicy } from "@/types/permissionMode";
+import { getPermissionMode, getPermissionModeSandboxPolicy, isBuiltInPermissionModeId } from "@/types/permissionMode";
 
 export const DETAIL_TURN_PAGE_SIZE = 4;
 
 export async function ensureThreadResumed(client: JsonRpcClient, thread: Thread) {
+  const resumed = await resumeThreadWithInitialTurnPage(client, thread);
+  return resumed.thread;
+}
+
+export async function resumeThreadWithInitialTurnPage(client: JsonRpcClient, thread: Thread) {
   if (thread.status.type !== "notLoaded") {
-    return thread;
+    return {
+      thread,
+      initialTurnsPage: null,
+    };
   }
 
   const resumed = await client.request<ThreadResumeResponse>("thread/resume", {
     threadId: thread.id,
     excludeTurns: true,
+    initialTurnsPage: {
+      limit: DETAIL_TURN_PAGE_SIZE,
+      sortDirection: "desc",
+      itemsView: "full",
+    },
     persistExtendedHistory: false,
   });
 
-  return resumed.thread;
+  return {
+    thread: resumed.thread,
+    initialTurnsPage: resumed.initialTurnsPage
+      ? {
+          turns: [...resumed.initialTurnsPage.data].reverse(),
+          nextCursor: resumed.initialTurnsPage.nextCursor,
+        }
+      : null,
+  };
 }
 
 export async function startTurn(
   client: JsonRpcClient,
   threadId: string,
   input: UserInput[],
-  options: { cwd?: string; model?: string | null; permissionMode?: PermissionModeId } = {},
+  options: { clientUserMessageId?: string; cwd?: string; model?: string | null; permissionMode?: PermissionModeId } = {},
 ) {
-  const permissionMode = options.permissionMode ? getPermissionMode(options.permissionMode) : null;
+  const permissionMode = options.permissionMode && isBuiltInPermissionModeId(options.permissionMode) ? getPermissionMode(options.permissionMode) : null;
 
   await client.request<TurnStartResponse>("turn/start", {
     threadId,
+    clientUserMessageId: options.clientUserMessageId,
     model: options.model ?? undefined,
     approvalsReviewer: permissionMode?.approvalsReviewer,
+    permissions: options.permissionMode && !isBuiltInPermissionModeId(options.permissionMode) ? options.permissionMode : undefined,
     sandboxPolicy: permissionMode && options.cwd ? getPermissionModeSandboxPolicy(permissionMode.id, options.cwd) : undefined,
     input,
   });
 }
 
-export async function steerTurn(client: JsonRpcClient, threadId: string, turnId: string, input: UserInput[]) {
+export async function steerTurn(client: JsonRpcClient, threadId: string, turnId: string, input: UserInput[], clientUserMessageId?: string) {
   await client.request<TurnSteerResponse>("turn/steer", {
     threadId,
     expectedTurnId: turnId,
+    clientUserMessageId,
     input,
   });
 }
@@ -93,6 +120,19 @@ export async function loadModels(client: JsonRpcClient) {
   });
 
   return response.data;
+}
+
+export async function loadPermissionProfiles(client: JsonRpcClient, cwd: string | null) {
+  const response = await client.request<PermissionProfileListResponse>("permissionProfile/list", {
+    cwd,
+    limit: 50,
+  });
+
+  return response.data;
+}
+
+export async function updateThreadSettings(client: JsonRpcClient, params: ThreadSettingsUpdateParams) {
+  return client.request<ThreadSettingsUpdateResponse>("thread/settings/update", params);
 }
 
 export async function loadSkills(client: JsonRpcClient, cwd: string | null) {
@@ -156,6 +196,14 @@ export async function loadTurnPage(client: JsonRpcClient, threadId: string, curs
 
 export function getInProgressTurnId(turns: Turn[]) {
   return turns.find((turn) => turn.status === "inProgress")?.id ?? null;
+}
+
+export function buildClientUserMessageId(threadId: string, sequence: number, timestampMs = Date.now()) {
+  return `mobile:${sanitizeClientIdPart(threadId)}:${timestampMs}:${sequence}`;
+}
+
+function sanitizeClientIdPart(value: string) {
+  return value.replace(/[^a-zA-Z0-9_.:-]/g, "_");
 }
 
 export function normalizeConnection(url: string, token: string): NormalizedConnection {

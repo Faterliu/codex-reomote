@@ -63,6 +63,7 @@ export default function App() {
               isInterrupting={codex.isInterruptingTurn}
               isResponding={isDraftThread ? codex.isCreatingThread : codex.isResponding}
               models={codex.pickerData.models}
+              permissionProfiles={codex.pickerData.permissionProfiles}
               plugins={codex.pickerData.plugins}
               selectedModelId={codex.selectedModelId}
               selectedPermissionModeId={codex.selectedPermissionModeId}

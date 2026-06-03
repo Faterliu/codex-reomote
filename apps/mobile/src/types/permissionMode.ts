@@ -1,9 +1,10 @@
-import type { ApprovalsReviewer, SandboxMode, SandboxPolicy } from "@codex-mobile/protocol/v2";
+import type { ApprovalsReviewer, PermissionProfileSummary, SandboxMode, SandboxPolicy, ThreadSettings } from "@codex-mobile/protocol/v2";
 
-export type PermissionModeId = "standard" | "auto" | "full";
+export type BuiltInPermissionModeId = "standard" | "auto" | "full";
+export type PermissionModeId = BuiltInPermissionModeId | string;
 
 export type PermissionModeConfig = {
-  id: PermissionModeId;
+  id: BuiltInPermissionModeId;
   label: string;
   description: string;
   sandbox: SandboxMode;
@@ -36,11 +37,53 @@ export const PERMISSION_MODES: PermissionModeConfig[] = [
 
 export const DEFAULT_PERMISSION_MODE_ID: PermissionModeId = "standard";
 
+export function isBuiltInPermissionModeId(id: PermissionModeId): id is BuiltInPermissionModeId {
+  return id === "standard" || id === "auto" || id === "full";
+}
+
 export function getPermissionMode(id: PermissionModeId) {
   return PERMISSION_MODES.find((mode) => mode.id === id) ?? PERMISSION_MODES[0];
 }
 
-export function getPermissionModeSandboxPolicy(id: PermissionModeId, cwd: string): SandboxPolicy {
+export function getPermissionModeLabel(id: PermissionModeId, profiles: PermissionProfileSummary[] = []) {
+  const builtInMode = isBuiltInPermissionModeId(id) ? getPermissionMode(id) : null;
+
+  if (builtInMode) {
+    return builtInMode.label;
+  }
+
+  const profile = profiles.find((candidate) => candidate.id === id);
+  return profile?.description || id;
+}
+
+export function getPermissionModeDescription(id: PermissionModeId, profiles: PermissionProfileSummary[] = []) {
+  const builtInMode = isBuiltInPermissionModeId(id) ? getPermissionMode(id) : null;
+
+  if (builtInMode) {
+    return builtInMode.description;
+  }
+
+  const profile = profiles.find((candidate) => candidate.id === id);
+  return profile?.description || "app-server 权限 profile";
+}
+
+export function permissionModeFromThreadSettings(settings: ThreadSettings): PermissionModeId {
+  if (settings.activePermissionProfile?.id) {
+    return settings.activePermissionProfile.id;
+  }
+
+  if (settings.sandboxPolicy.type === "dangerFullAccess") {
+    return "full";
+  }
+
+  if (settings.approvalsReviewer === "auto_review") {
+    return "auto";
+  }
+
+  return DEFAULT_PERMISSION_MODE_ID;
+}
+
+export function getPermissionModeSandboxPolicy(id: BuiltInPermissionModeId, cwd: string): SandboxPolicy {
   if (id === "full") {
     return { type: "dangerFullAccess" };
   }

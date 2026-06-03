@@ -33,7 +33,7 @@ getApprovalTimelineEntryId(permissionApproval) satisfies string | null;
 
 const turnResponse = buildApprovalResponse(permissionApproval, "accept");
 turnResponse.scope satisfies "turn" | "session";
-turnResponse.permissions.fileSystem?.entries?.[0]?.access satisfies "read" | "write" | "none" | undefined;
+turnResponse.permissions.fileSystem?.entries?.[0]?.access satisfies "read" | "write" | "deny" | undefined;
 
 const sessionResponse = buildApprovalResponse(permissionApproval, "acceptForSession");
 sessionResponse.scope satisfies "turn" | "session";

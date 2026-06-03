@@ -4,6 +4,7 @@ import type {
   FileChangeRequestApprovalResponse,
   FileSystemPath,
   FileSystemSpecialPath,
+  FileSystemAccessMode,
   GrantedPermissionProfile,
   PermissionsRequestApprovalResponse,
   RequestPermissionProfile,
@@ -198,13 +199,13 @@ function formatPermissionDetails(permissions: RequestPermissionProfile) {
   return details;
 }
 
-function formatFileSystemAccess(access: "read" | "write" | "none") {
+function formatFileSystemAccess(access: FileSystemAccessMode) {
   switch (access) {
     case "read":
       return "读取";
     case "write":
       return "写入";
-    case "none":
+    case "deny":
       return "无访问";
   }
 }

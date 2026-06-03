@@ -1,5 +1,5 @@
 import type { TimelineEntry } from "@/lib/threadFormat";
-import type { Model, PluginSummary, SkillMetadata } from "@codex-mobile/protocol/v2";
+import type { Model, PermissionProfileSummary, PluginSummary, SkillMetadata } from "@codex-mobile/protocol/v2";
 
 export type LiveEvent = {
   id: string;
@@ -11,6 +11,7 @@ export type PendingEntry = TimelineEntry & {
   threadId: string;
   sourceText: string;
   baselineCount: number;
+  clientId: string;
 };
 
 export type NormalizedConnection = {
@@ -25,6 +26,7 @@ export type DeltaBuffer = {
 
 export type PickerData = {
   models: Model[];
+  permissionProfiles: PermissionProfileSummary[];
   skills: SkillMetadata[];
   plugins: PluginSummary[];
 };

@@ -5,7 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 
-import type { Model, PluginSummary, SkillMetadata, Thread } from "@codex-mobile/protocol/v2";
+import type { Model, PermissionProfileSummary, PluginSummary, SkillMetadata, Thread } from "@codex-mobile/protocol/v2";
 import type { ToolRequestUserInputResponse } from "@codex-mobile/protocol/v2";
 
 import type { TimelineAttachment, TimelineEntry, TimelineFileChange } from "@/lib/threadFormat";
@@ -23,7 +23,7 @@ import { UserInputRequestCard } from "@/components/user-input/UserInputRequestCa
 import { getUserInputTimelineEntryId } from "@/components/user-input/userInputFormat";
 import type { PendingApproval, PendingUserInputRequest } from "@/types/codex";
 import type { ComposerImageAttachment, ComposerMention } from "@/types/composer";
-import { getPermissionMode, type PermissionModeId } from "@/types/permissionMode";
+import { getPermissionModeLabel, isBuiltInPermissionModeId, type PermissionModeId } from "@/types/permissionMode";
 
 type Props = {
   thread: Thread | null;
@@ -40,6 +40,7 @@ type Props = {
   userInputRequest?: PendingUserInputRequest | null;
   isLoadingPickerData?: boolean;
   models?: Model[];
+  permissionProfiles?: PermissionProfileSummary[];
   plugins?: PluginSummary[];
   selectedModelId?: string | null;
   selectedPermissionModeId?: PermissionModeId;
@@ -76,6 +77,7 @@ export function ThreadDetail({
   userInputRequest = null,
   isLoadingPickerData = false,
   models = [],
+  permissionProfiles = [],
   plugins = [],
   selectedModelId = null,
   selectedPermissionModeId = "standard",
@@ -266,7 +268,8 @@ export function ThreadDetail({
   };
 
   const selectedModelLabel = models.find((model) => model.model === selectedModelId)?.displayName ?? selectedModelId;
-  const selectedPermissionMode = getPermissionMode(selectedPermissionModeId);
+  const selectedPermissionModeLabel = getPermissionModeLabel(selectedPermissionModeId, permissionProfiles);
+  const selectedPermissionModeIsFull = isBuiltInPermissionModeId(selectedPermissionModeId) && selectedPermissionModeId === "full";
   const shouldSteer = isResponding && (message.trim().length > 0 || imageAttachments.length > 0);
 
   const handleScroll = useCallback((event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
@@ -432,6 +435,7 @@ export function ThreadDetail({
         }}
         selectedModelId={selectedModelId}
         selectedPermissionModeId={selectedPermissionModeId}
+        permissionProfiles={permissionProfiles}
         plugins={plugins}
         skills={skills}
         visible={toolsVisible}
@@ -461,17 +465,17 @@ export function ThreadDetail({
         />
       ) : null}
       <View style={styles.composerShell}>
-        {selectedModelLabel || selectedPermissionMode || mentions.length ? (
+        {selectedModelLabel || selectedPermissionModeLabel || mentions.length ? (
           <View style={styles.composerMeta}>
             {selectedModelLabel ? (
               <View style={styles.composerMetaChip}>
                 <Text style={styles.composerMetaText}>模型 {selectedModelLabel}</Text>
               </View>
             ) : null}
-            {selectedPermissionMode ? (
-              <View style={[styles.composerMetaChip, selectedPermissionMode.id === "full" && styles.composerMetaChipDanger]}>
-                <Text style={[styles.composerMetaText, selectedPermissionMode.id === "full" && styles.composerMetaTextDanger]}>
-                  权限 {selectedPermissionMode.label}
+            {selectedPermissionModeLabel ? (
+              <View style={[styles.composerMetaChip, selectedPermissionModeIsFull && styles.composerMetaChipDanger]}>
+                <Text style={[styles.composerMetaText, selectedPermissionModeIsFull && styles.composerMetaTextDanger]}>
+                  权限 {selectedPermissionModeLabel}
                 </Text>
               </View>
             ) : null}

@@ -3,14 +3,15 @@ import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "r
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 
-import type { Model, PluginSummary, SkillMetadata } from "@codex-mobile/protocol/v2";
+import type { Model, PermissionProfileSummary, PluginSummary, SkillMetadata } from "@codex-mobile/protocol/v2";
 
 import type { ComposerMention } from "@/types/composer";
-import { PERMISSION_MODES, type PermissionModeId } from "@/types/permissionMode";
+import { PERMISSION_MODES, isBuiltInPermissionModeId, type PermissionModeId } from "@/types/permissionMode";
 
 type Props = {
   isLoading?: boolean;
   models: Model[];
+  permissionProfiles: PermissionProfileSummary[];
   plugins: PluginSummary[];
   selectedModelId: string | null;
   selectedPermissionModeId: PermissionModeId;
@@ -37,6 +38,7 @@ type ToolListItem =
 export function ComposerToolsModal({
   isLoading = false,
   models,
+  permissionProfiles,
   plugins,
   selectedModelId,
   selectedPermissionModeId,
@@ -80,6 +82,11 @@ export function ComposerToolsModal({
 
     return items;
   }, [plugins, skills]);
+
+  const visiblePermissionProfiles = useMemo(
+    () => permissionProfiles.filter((profile) => !isBuiltInPermissionModeId(profile.id)),
+    [permissionProfiles],
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: ToolListItem }) => {
@@ -137,6 +144,21 @@ export function ComposerToolsModal({
                   <Text style={styles.actionText}>{mode.description}</Text>
                 </Pressable>
               ))}
+              {visiblePermissionProfiles.map((profile) => (
+                <Pressable
+                  key={profile.id}
+                  onPress={() => onSelectPermissionMode(profile.id)}
+                  style={[styles.permissionAction, selectedPermissionModeId === profile.id && styles.permissionActionActive]}
+                >
+                  <View style={styles.permissionTitleRow}>
+                    <Text style={[styles.actionTitle, selectedPermissionModeId === profile.id && styles.permissionTitleActive]}>
+                      {profile.description || profile.id}
+                    </Text>
+                    {selectedPermissionModeId === profile.id ? <Ionicons color="#2454d6" name="checkmark-circle" size={17} /> : null}
+                  </View>
+                  <Text style={styles.actionText}>{profile.id}</Text>
+                </Pressable>
+              ))}
             </View>
           );
         case "section":
@@ -183,6 +205,7 @@ export function ComposerToolsModal({
       onSelectPermissionMode,
       selectedModelId,
       selectedPermissionModeId,
+      visiblePermissionProfiles,
     ],
   );
 

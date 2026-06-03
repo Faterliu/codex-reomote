@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 
+import type { ServerNotification } from "@codex-mobile/protocol";
 import type {
   Thread,
   ThreadReadResponse,
@@ -9,25 +10,36 @@ import type {
 
 import { JsonRpcClient } from "@/lib/jsonRpcClient";
 import { flattenTurns, timelineEntryFromCommandApproval, type TimelineEntry } from "@/lib/threadFormat";
-import type { ConnectionState, PendingApproval, PendingUserInputRequest, ReadinessStatus } from "@/types/codex";
+import type { ConnectionState, JsonRpcIncoming, PendingApproval, PendingUserInputRequest, ReadinessStatus } from "@/types/codex";
 import type { ComposerImageAttachment, ComposerMention } from "@/types/composer";
-import { DEFAULT_PERMISSION_MODE_ID, getPermissionMode, type PermissionModeId } from "@/types/permissionMode";
+import {
+  DEFAULT_PERMISSION_MODE_ID,
+  getPermissionMode,
+  getPermissionModeSandboxPolicy,
+  isBuiltInPermissionModeId,
+  permissionModeFromThreadSettings,
+  type PermissionModeId,
+} from "@/types/permissionMode";
 
 import {
   archiveThread,
+  buildClientUserMessageId,
   ensureThreadResumed,
   formatReadinessLog,
   getInProgressTurnId,
   loadInstalledPlugins,
   loadModels,
+  loadPermissionProfiles,
   loadSkills,
   loadThreads,
   loadTurnPage,
   normalizeConnection,
+  resumeThreadWithInitialTurnPage,
   setThreadName,
   startReview,
   startTurn,
   steerTurn,
+  updateThreadSettings,
   unarchiveThread,
 } from "./codex-app-server/api";
 import { buildPendingMessageBody, buildTurnInput } from "./codex-app-server/composer";
@@ -77,6 +89,7 @@ export function useCodexAppServer() {
   const [selectedPermissionModeId, setSelectedPermissionModeId] = useState<PermissionModeId>(DEFAULT_PERMISSION_MODE_ID);
   const [pickerData, setPickerData] = useState<PickerData>({
     models: [],
+    permissionProfiles: [],
     skills: [],
     plugins: [],
   });
@@ -109,6 +122,7 @@ export function useCodexAppServer() {
         }
       },
       onNotification: (message) => {
+        syncThreadSettingsNotification(message);
         handleNotification(message, {
           setThreads,
           setSelectedThread,
@@ -138,6 +152,20 @@ export function useCodexAppServer() {
     clientRef.current = instance;
     return instance;
   }, []);
+
+  const syncThreadSettingsNotification = (message: JsonRpcIncoming) => {
+    if (!("method" in message) || message.method !== "thread/settings/updated") {
+      return;
+    }
+
+    const notification = message as Extract<ServerNotification, { method: "thread/settings/updated" }>;
+    if (notification.params.threadId !== selectedThreadIdRef.current) {
+      return;
+    }
+
+    setSelectedModelId(notification.params.threadSettings.model);
+    setSelectedPermissionModeId(permissionModeFromThreadSettings(notification.params.threadSettings));
+  };
 
   const visibleTimeline = useMemo(
     () => applyLocalImageCache(mergePendingEntries(timeline, pendingEntries, selectedThread?.id ?? null), localImageCacheRef.current),
@@ -331,12 +359,13 @@ export function useCodexAppServer() {
     setActiveTurnId(null);
 
     try {
-      const resumedThread = await ensureThreadResumed(client, thread);
+      const resumed = await resumeThreadWithInitialTurnPage(client, thread);
       if (selectedThreadIdRef.current !== thread.id) {
         return;
       }
+      const resumedThread = resumed.thread;
       setSelectedThread(resumedThread);
-      const page = await loadTurnPage(client, resumedThread.id, null);
+      const page = resumed.initialTurnsPage ?? (await loadTurnPage(client, resumedThread.id, null));
       if (selectedThreadIdRef.current !== thread.id) {
         return;
       }
@@ -402,11 +431,12 @@ export function useCodexAppServer() {
     }
 
     const sourceThread = selectedThread;
+    const clientUserMessageId = buildClientUserMessageId(sourceThread.id, nextPendingSequence());
     const pendingBody = buildPendingMessageBody(trimmed, images);
-    const pendingId = addPendingMessage(sourceThread.id, pendingBody, countUserText(timeline, trimmed), images, trimmed);
+    const pendingId = addPendingMessage(sourceThread.id, pendingBody, countUserText(timeline, trimmed), images, trimmed, clientUserMessageId);
 
     try {
-      const resumedThread = await sendMessageToThread(sourceThread, trimmed, mentions, images);
+      const resumedThread = await sendMessageToThread(sourceThread, trimmed, mentions, images, clientUserMessageId);
       markPendingMessageSent(pendingId);
       if (selectedThreadIdRef.current === sourceThread.id) {
         setSelectedThread(resumedThread);
@@ -419,17 +449,28 @@ export function useCodexAppServer() {
     }
   };
 
-  const sendMessageToThread = async (thread: Thread, text: string, mentions: ComposerMention[] = [], images: ComposerImageAttachment[] = []) => {
+  const sendMessageToThread = async (
+    thread: Thread,
+    text: string,
+    mentions: ComposerMention[] = [],
+    images: ComposerImageAttachment[] = [],
+    clientUserMessageId?: string,
+  ) => {
     const resumedThread = await ensureThreadResumed(client, thread);
     const uploadedImagePaths = await uploadComposerImages(client, resumedThread.cwd, images);
     const input = buildTurnInput(text, mentions, uploadedImagePaths);
 
     if (activeTurnId && selectedThread?.status.type === "active" && selectedThreadIdRef.current === resumedThread.id) {
-      await steerTurn(client, resumedThread.id, activeTurnId, input);
+      await steerTurn(client, resumedThread.id, activeTurnId, input, clientUserMessageId);
       return resumedThread;
     }
 
-    await startTurn(client, resumedThread.id, input, { cwd: resumedThread.cwd, model: selectedModelId, permissionMode: selectedPermissionModeId });
+    await startTurn(client, resumedThread.id, input, {
+      clientUserMessageId,
+      cwd: resumedThread.cwd,
+      model: selectedModelId,
+      permissionMode: selectedPermissionModeId,
+    });
     return resumedThread;
   };
 
@@ -456,15 +497,21 @@ export function useCodexAppServer() {
     }
   };
 
+  const nextPendingSequence = () => {
+    const sequence = pendingCounterRef.current;
+    pendingCounterRef.current += 1;
+    return sequence;
+  };
+
   const addPendingMessage = (
     threadId: string,
     text: string,
     baselineCount: number,
     images: ComposerImageAttachment[] = [],
     sourceText = text,
+    clientId = buildClientUserMessageId(threadId, nextPendingSequence()),
   ) => {
-    const pendingId = `pending:${threadId}:${Date.now()}:${pendingCounterRef.current}`;
-    pendingCounterRef.current += 1;
+    const pendingId = `pending:${clientId}`;
 
     setPendingEntries((current) => [
       ...current,
@@ -482,6 +529,7 @@ export function useCodexAppServer() {
         threadId,
         sourceText,
         baselineCount,
+        clientId,
         pending: true,
       },
     ]);
@@ -513,12 +561,13 @@ export function useCodexAppServer() {
     let pendingId: string | null = null;
 
     try {
-      const permissionMode = getPermissionMode(selectedPermissionModeId);
+      const permissionMode = isBuiltInPermissionModeId(selectedPermissionModeId) ? getPermissionMode(selectedPermissionModeId) : null;
       const result = await client.request<ThreadStartResponse>("thread/start", {
         cwd: trimmedCwd,
         model: selectedModelId ?? undefined,
-        approvalsReviewer: permissionMode.approvalsReviewer,
-        sandbox: permissionMode.sandbox,
+        approvalsReviewer: permissionMode?.approvalsReviewer,
+        permissions: permissionMode ? undefined : selectedPermissionModeId,
+        sandbox: permissionMode?.sandbox,
         experimentalRawEvents: false,
         persistExtendedHistory: false,
       });
@@ -527,9 +576,10 @@ export function useCodexAppServer() {
       setSelectedThread(result.thread);
       setTimeline([]);
       setOlderTurnsCursor(null);
-      pendingId = addPendingMessage(result.thread.id, buildPendingMessageBody(trimmedMessage, images), 0, images, trimmedMessage);
+      const clientUserMessageId = buildClientUserMessageId(result.thread.id, nextPendingSequence());
+      pendingId = addPendingMessage(result.thread.id, buildPendingMessageBody(trimmedMessage, images), 0, images, trimmedMessage, clientUserMessageId);
 
-      await sendMessageToThread(result.thread, trimmedMessage, mentions, images);
+      await sendMessageToThread(result.thread, trimmedMessage, mentions, images, clientUserMessageId);
       markPendingMessageSent(pendingId);
       await openThread(result.thread);
     } catch (error) {
@@ -553,8 +603,9 @@ export function useCodexAppServer() {
 
     try {
       const cwd = selectedThread?.cwd ?? recentCwds[0] ?? null;
-      const [modelsResult, skillsResult, pluginsResult] = await Promise.allSettled([
+      const [modelsResult, permissionProfilesResult, skillsResult, pluginsResult] = await Promise.allSettled([
         loadModels(client),
+        loadPermissionProfiles(client, cwd),
         loadSkills(client, cwd),
         loadInstalledPlugins(client, cwd),
       ]);
@@ -566,14 +617,16 @@ export function useCodexAppServer() {
         return;
       }
 
+      const permissionProfiles = permissionProfilesResult.status === "fulfilled" ? permissionProfilesResult.value : [];
       const skills = skillsResult.status === "fulfilled" ? skillsResult.value : [];
       const plugins = pluginsResult.status === "fulfilled" ? pluginsResult.value : [];
       const optionalLogs = [
+        permissionProfilesResult.status === "rejected" ? `permission profiles unavailable: ${compactRpcError(permissionProfilesResult.reason)}` : null,
         skillsResult.status === "rejected" ? `skills unavailable: ${compactRpcError(skillsResult.reason)}` : null,
         pluginsResult.status === "rejected" ? `plugins unavailable: ${compactRpcError(pluginsResult.reason)}` : null,
       ].filter((line): line is string => Boolean(line));
 
-      setPickerData({ models: modelsResult.value, skills, plugins });
+      setPickerData({ models: modelsResult.value, permissionProfiles, skills, plugins });
       setSelectedModelId((current) => current ?? modelsResult.value.find((model) => model.isDefault)?.model ?? modelsResult.value[0]?.model ?? null);
 
       if (optionalLogs.length) {
@@ -602,6 +655,50 @@ export function useCodexAppServer() {
       const message = compactRpcError(error);
       setRecentError(`rename failed: ${message}`);
       setLogs((current) => [`rename failed: ${message}`, ...current].slice(0, 30));
+    }
+  };
+
+  const selectModel = (modelId: string) => {
+    setSelectedModelId(modelId);
+    void updateSelectedThreadSettings({ model: modelId }, "model settings update failed");
+  };
+
+  const selectPermissionMode = (modeId: PermissionModeId) => {
+    setSelectedPermissionModeId(modeId);
+
+    if (isBuiltInPermissionModeId(modeId)) {
+      const mode = getPermissionMode(modeId);
+      void updateSelectedThreadSettings(
+        {
+          approvalsReviewer: mode.approvalsReviewer,
+          permissions: null,
+          sandboxPolicy: selectedThread?.cwd ? getPermissionModeSandboxPolicy(mode.id, selectedThread.cwd) : undefined,
+        },
+        "permission settings update failed",
+      );
+      return;
+    }
+
+    void updateSelectedThreadSettings({ permissions: modeId }, "permission settings update failed");
+  };
+
+  const updateSelectedThreadSettings = async (
+    params: Omit<Parameters<typeof updateThreadSettings>[1], "threadId">,
+    logPrefix: string,
+  ) => {
+    if (!selectedThread || state !== "connected") {
+      return;
+    }
+
+    try {
+      await updateThreadSettings(client, {
+        threadId: selectedThread.id,
+        ...params,
+      });
+    } catch (error) {
+      const message = compactRpcError(error);
+      setRecentError(`${logPrefix}: ${message}`);
+      setLogs((current) => [`${logPrefix}: ${message}`, ...current].slice(0, 30));
     }
   };
 
@@ -799,8 +896,8 @@ export function useCodexAppServer() {
     refreshPickerData,
     createThread,
     sendMessage,
-    setSelectedModelId,
-    setSelectedPermissionModeId,
+    setSelectedModelId: selectModel,
+    setSelectedPermissionModeId: selectPermissionMode,
     renameThread,
     archiveSelectedThread,
     restoreThread,
