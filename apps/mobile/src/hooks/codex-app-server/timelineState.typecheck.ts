@@ -6,8 +6,11 @@ import {
   applyThreadCompacted,
   applyFileChangePatchUpdated,
   applyPlanDelta,
+  resolveOlderTurnsCursor,
   applyTurnDiffUpdated,
   applyTurnPlanUpdated,
+  isSameTimeline,
+  mergeTimelineSnapshot,
 } from "./timelineState";
 
 const plan: TurnPlanStep[] = [
@@ -43,3 +46,41 @@ afterMcp[0]?.body satisfies string | undefined;
 
 const afterCompacted = applyThreadCompacted(afterMcp, "turn-1");
 afterCompacted[0]?.role satisfies "user" | "assistant" | "tool" | "system" | undefined;
+
+const resolvedCursor = resolveOlderTurnsCursor(
+  "older-cursor",
+  "first-page-cursor",
+  [{ id: "old:user", turnId: "old", role: "user", title: "You", body: "旧消息" }],
+  [{ id: "new:user", turnId: "new", role: "user", title: "You", body: "新消息" }],
+);
+resolvedCursor satisfies string | null;
+
+const exhaustedCursor = resolveOlderTurnsCursor(
+  null,
+  "first-page-cursor",
+  [{ id: "old:user", turnId: "old", role: "user", title: "You", body: "旧消息" }],
+  [{ id: "new:user", turnId: "new", role: "user", title: "You", body: "新消息" }],
+);
+exhaustedCursor satisfies string | null;
+
+const activeSnapshotMerge = mergeTimelineSnapshot(
+  [
+    { id: "old:user", turnId: "old", role: "user", title: "You", body: "旧消息" },
+    { id: "active:user", turnId: "active", role: "user", title: "You", body: "继续" },
+    { id: "active:assistant", turnId: "active", role: "assistant", title: "Codex", body: "本地流式内容", streaming: true },
+  ],
+  [
+    { id: "active:user", turnId: "active", role: "user", title: "You", body: "继续" },
+    { id: "active:assistant", turnId: "active", role: "assistant", title: "Codex", body: "旧快照", streaming: true },
+    { id: "latest:assistant", turnId: "latest", role: "assistant", title: "Codex", body: "最新完成消息" },
+  ],
+  { preserveTurnIds: ["active"] },
+);
+activeSnapshotMerge[0]?.body satisfies string | undefined;
+activeSnapshotMerge.find((entry) => entry.id === "active:assistant")?.streaming satisfies boolean | undefined;
+
+const timelineChanged = isSameTimeline(
+  [{ id: "same", role: "assistant", title: "Codex", body: "内容", streaming: true }],
+  [{ id: "same", role: "assistant", title: "Codex", body: "内容", streaming: false }],
+);
+timelineChanged satisfies boolean;

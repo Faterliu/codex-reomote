@@ -53,6 +53,7 @@ import {
   mergeTimelineSnapshot,
   mergePendingEntries,
   reconcilePendingEntries,
+  resolveOlderTurnsCursor,
   uniqueCwds,
 } from "./codex-app-server/timelineState";
 import type { DeltaBuffer, LiveEvent, NormalizedConnection, PendingEntry, PickerData } from "./codex-app-server/types";
@@ -105,6 +106,9 @@ export function useCodexAppServer() {
   const reconnectAttemptRef = useRef(0);
   const selectedThreadIdRef = useRef<string | null>(null);
   const isLoadingMoreRef = useRef(false);
+  const olderTurnsCursorRef = useRef<string | null>(null);
+  const activeTurnIdRef = useRef<string | null>(null);
+  const timelineRef = useRef<TimelineEntry[]>([]);
   const deltaBufferRef = useRef<DeltaBuffer>({
     timer: null,
     chunks: new Map(),
@@ -176,6 +180,18 @@ export function useCodexAppServer() {
   useEffect(() => {
     selectedThreadIdRef.current = selectedThread?.id ?? null;
   }, [selectedThread?.id]);
+
+  useEffect(() => {
+    olderTurnsCursorRef.current = olderTurnsCursor;
+  }, [olderTurnsCursor]);
+
+  useEffect(() => {
+    activeTurnIdRef.current = activeTurnId;
+  }, [activeTurnId]);
+
+  useEffect(() => {
+    timelineRef.current = timeline;
+  }, [timeline]);
 
   useEffect(() => {
     if (!selectedThread || isOpeningThread || state !== "connected") {
@@ -834,14 +850,18 @@ export function useCodexAppServer() {
         return;
       }
       const nextTimeline = flattenTurns(page.turns);
+      const nextActiveTurnId = getInProgressTurnId(page.turns);
       setSelectedThread(threadResponse.thread);
-      setActiveTurnId(getInProgressTurnId(page.turns));
+      setActiveTurnId(nextActiveTurnId);
       setThreads((current) =>
         current.map((thread) => (thread.id === threadResponse.thread.id ? { ...thread, status: threadResponse.thread.status } : thread)),
       );
-      setOlderTurnsCursor(page.nextCursor);
+      setOlderTurnsCursor(resolveOlderTurnsCursor(olderTurnsCursorRef.current, page.nextCursor, timelineRef.current, nextTimeline));
       setTimeline((current) => {
-        const mergedTimeline = mergeTimelineSnapshot(current, nextTimeline);
+        const currentActiveTurnId = activeTurnIdRef.current;
+        // 静默刷新只校准历史和完成态；正在回复的 turn 继续以实时通知为准，避免 3 秒快照覆盖流式 delta。
+        const preservedActiveTurnId = options.silent && currentActiveTurnId && currentActiveTurnId === nextActiveTurnId ? currentActiveTurnId : null;
+        const mergedTimeline = mergeTimelineSnapshot(current, nextTimeline, { preserveTurnIds: [preservedActiveTurnId] });
         return isSameTimeline(current, mergedTimeline) ? current : mergedTimeline;
       });
       setPendingEntries((current) => reconcilePendingEntries(current, nextTimeline, threadResponse.thread.id));

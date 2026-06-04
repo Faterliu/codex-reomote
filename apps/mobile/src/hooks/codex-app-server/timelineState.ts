@@ -64,7 +64,7 @@ export function isSameTimeline(current: TimelineEntry[], next: TimelineEntry[]) 
   }
 
   for (let i = 0; i < current.length; i += 1) {
-    if (current[i]?.id !== next[i]?.id || current[i]?.body !== next[i]?.body) {
+    if (getTimelineEntrySignature(current[i]) !== getTimelineEntrySignature(next[i])) {
       return false;
     }
   }
@@ -72,18 +72,116 @@ export function isSameTimeline(current: TimelineEntry[], next: TimelineEntry[]) 
   return true;
 }
 
-export function mergeTimelineSnapshot(current: TimelineEntry[], snapshot: TimelineEntry[]) {
+export function mergeTimelineSnapshot(
+  current: TimelineEntry[],
+  snapshot: TimelineEntry[],
+  options: { preserveTurnIds?: Array<string | null | undefined> } = {},
+) {
+  const preserveTurnIds = new Set(options.preserveTurnIds?.filter(isString));
   const snapshotTurnIds = new Set(snapshot.map((entry) => entry.turnId).filter(Boolean));
   const snapshotIds = new Set(snapshot.map((entry) => entry.id));
-  const olderLoadedEntries = current.filter((entry) => entry.turnId && !snapshotTurnIds.has(entry.turnId));
-  const missingToolEntries = current.filter((entry) => shouldPreserveMissingToolEntry(entry) && !snapshotIds.has(entry.id));
-  const mergedSnapshot = [...olderLoadedEntries, ...snapshot];
+  const olderLoadedEntries = current.filter((entry) => {
+    const turnId = entry.turnId;
+    return Boolean(turnId && !snapshotTurnIds.has(turnId) && !preserveTurnIds.has(turnId));
+  });
+  const missingToolEntries = current.filter((entry) => {
+    const turnId = entry.turnId;
+    return shouldPreserveMissingToolEntry(entry) && !snapshotIds.has(entry.id) && Boolean(!turnId || !preserveTurnIds.has(turnId));
+  });
+  const mergedSnapshot = [...olderLoadedEntries, ...mergeSnapshotWithPreservedTurns(current, snapshot, preserveTurnIds)];
 
   if (missingToolEntries.length === 0) {
     return mergedSnapshot;
   }
 
   return missingToolEntries.reduce((next, entry) => insertEntryAfterTurn(next, entry), mergedSnapshot);
+}
+
+function getTimelineEntrySignature(entry: TimelineEntry | undefined) {
+  if (!entry) {
+    return "";
+  }
+
+  return JSON.stringify({
+    id: entry.id,
+    turnId: entry.turnId,
+    role: entry.role,
+    variant: entry.variant,
+    title: entry.title,
+    metaLabel: entry.metaLabel,
+    body: entry.body,
+    commandText: entry.commandText,
+    commandStatus: entry.commandStatus,
+    commandExitCode: entry.commandExitCode,
+    commandOutput: entry.commandOutput,
+    webSearchActions: entry.webSearchActions,
+    attachments: entry.attachments,
+    fileChanges: entry.fileChanges,
+    pending: entry.pending,
+    failed: entry.failed,
+    streaming: entry.streaming,
+  });
+}
+
+function isString(value: string | null | undefined): value is string {
+  return Boolean(value);
+}
+
+function mergeSnapshotWithPreservedTurns(current: TimelineEntry[], snapshot: TimelineEntry[], preserveTurnIds: Set<string>) {
+  if (preserveTurnIds.size === 0) {
+    return snapshot;
+  }
+
+  const currentByTurnId = new Map<string, TimelineEntry[]>();
+  for (const entry of current) {
+    if (!entry.turnId || !preserveTurnIds.has(entry.turnId)) {
+      continue;
+    }
+
+    currentByTurnId.set(entry.turnId, [...(currentByTurnId.get(entry.turnId) ?? []), entry]);
+  }
+
+  const insertedTurnIds = new Set<string>();
+  const merged: TimelineEntry[] = [];
+
+  for (const entry of snapshot) {
+    const turnId = entry.turnId;
+    if (!turnId || !preserveTurnIds.has(turnId)) {
+      merged.push(entry);
+      continue;
+    }
+
+    if (insertedTurnIds.has(turnId)) {
+      continue;
+    }
+
+    insertedTurnIds.add(turnId);
+    merged.push(...(currentByTurnId.get(turnId) ?? [entry]));
+  }
+
+  for (const turnId of preserveTurnIds) {
+    if (insertedTurnIds.has(turnId)) {
+      continue;
+    }
+
+    merged.push(...(currentByTurnId.get(turnId) ?? []));
+  }
+
+  return merged;
+}
+
+export function resolveOlderTurnsCursor(
+  currentCursor: string | null,
+  snapshotCursor: string | null,
+  currentTimeline: TimelineEntry[],
+  snapshotTimeline: TimelineEntry[],
+) {
+  const snapshotTurnIds = new Set(snapshotTimeline.map((entry) => entry.turnId).filter(Boolean));
+  const hasLoadedOlderTurns = currentTimeline.some((entry) => entry.turnId && !snapshotTurnIds.has(entry.turnId));
+
+  // 静默刷新只拉最新页；如果用户已经加载过更早 turn，不能把 cursor 回退到最新页之后，
+  // 否则下一次“加载更早消息”会重复请求已加载页，看起来像点击没有数据。
+  return hasLoadedOlderTurns ? currentCursor : snapshotCursor;
 }
 
 function shouldPreserveMissingToolEntry(entry: TimelineEntry) {

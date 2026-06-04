@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { ThreadDetail } from "@/components/ThreadDetail";
 import { HomeTabs } from "@/components/app-shell/HomeTabs";
+import { loadSavedConnectionConfig } from "@/hooks/codex-app-server/connectionStorage";
 import type { RootTab } from "@/components/app-shell/RootTabBar";
 import { useCodexAppServer } from "@/hooks/useCodexAppServer";
 import type { Thread } from "@codex-mobile/protocol/v2";
@@ -14,7 +15,34 @@ export default function App() {
   const codex = useCodexAppServer();
   const [activeTab, setActiveTab] = useState<RootTab>("threads");
   const [isDraftThread, setIsDraftThread] = useState(false);
+  const autoConnectAttemptedRef = useRef(false);
   const isDetailView = Boolean(codex.selectedThread) || isDraftThread;
+
+  useEffect(() => {
+    if (activeTab !== "threads" || autoConnectAttemptedRef.current || !shouldAutoConnect(codex.state)) {
+      return;
+    }
+
+    autoConnectAttemptedRef.current = true;
+    let cancelled = false;
+
+    const autoConnect = async () => {
+      try {
+        const savedConfig = await loadSavedConnectionConfig();
+        if (!cancelled && savedConfig?.url.trim()) {
+          codex.connect(savedConfig.url, savedConfig.token);
+        }
+      } catch (error) {
+        console.warn("auto connect failed", error);
+      }
+    };
+
+    void autoConnect();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, codex.connect, codex.state]);
 
   const openThread = (thread: Thread) => {
     setIsDraftThread(false);
@@ -101,6 +129,10 @@ export default function App() {
       </SafeAreaView>
     </SafeAreaProvider>
   );
+}
+
+function shouldAutoConnect(state: ReturnType<typeof useCodexAppServer>["state"]) {
+  return state === "idle" || state === "closed" || state === "error";
 }
 
 const styles = StyleSheet.create({

@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ApprovalBanner } from "@/components/ApprovalBanner";
 import { ConnectionPanel } from "@/components/ConnectionPanel";
@@ -29,7 +29,14 @@ export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTab
         <Text style={[styles.headerBadge, codex.state === "connected" && styles.headerBadgeConnected]}>{codex.state}</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          activeTab === "threads" ? (
+            <RefreshControl refreshing={codex.isRefreshingThreads} tintColor="#2454d6" onRefresh={codex.refreshThreads} />
+          ) : undefined
+        }
+      >
         {activeTab === "connection" ? (
           <>
             <ConnectionPanel

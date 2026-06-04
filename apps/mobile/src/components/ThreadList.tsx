@@ -127,7 +127,7 @@ export function ThreadList({
                             {threadTitle(thread)}
                           </Text>
                           <Text numberOfLines={1} style={styles.timeText}>
-                            {formatTime(thread.updatedAt)}
+                            {formatThreadListTime(thread.updatedAt || thread.createdAt)}
                           </Text>
                         </View>
                         <View style={styles.metaRow}>
@@ -280,9 +280,11 @@ function formatThreadCwd(cwd: string) {
 }
 
 function compareThreadsStable(first: Thread, second: Thread) {
-  const createdDiff = second.createdAt - first.createdAt;
-  if (createdDiff !== 0) {
-    return createdDiff;
+  const firstTime = first.updatedAt || first.createdAt || 0;
+  const secondTime = second.updatedAt || second.createdAt || 0;
+  const updatedDiff = secondTime - firstTime;
+  if (updatedDiff !== 0) {
+    return updatedDiff;
   }
 
   const titleDiff = threadTitle(first).localeCompare(threadTitle(second), "zh-Hans-CN");
@@ -291,6 +293,19 @@ function compareThreadsStable(first: Thread, second: Thread) {
   }
 
   return first.id.localeCompare(second.id);
+}
+
+function formatThreadListTime(seconds: number) {
+  if (!seconds) {
+    return "";
+  }
+
+  const date = new Date(seconds * 1000);
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const hour = `${date.getHours()}`.padStart(2, "0");
+  const minute = `${date.getMinutes()}`.padStart(2, "0");
+  return `${month}月${day}日 ${hour}:${minute}`;
 }
 
 const styles = StyleSheet.create({

@@ -76,6 +76,9 @@ const completedTurn = prepareThreadDetailTimeline([
 ]);
 const processGroup = completedTurn.find(isTurnProcessGroup);
 processGroup?.variant satisfies "turnProcessGroup" | undefined;
+processGroup?.title satisfies string | undefined;
+const processGroupTitleIncludesDuration = processGroup?.title.includes("14m 25s");
+processGroupTitleIncludesDuration satisfies boolean | undefined;
 processGroup?.processEntries?.[0]?.title satisfies string | undefined;
 completedTurn[0]?.role satisfies "user" | "assistant" | "tool" | "system" | undefined;
 const processGroupIsBeforeFinalAnswer = completedTurn[1]?.variant === "turnProcessGroup";
@@ -125,10 +128,39 @@ const turnWithFileChange = prepareThreadDetailTimeline([
 ]);
 const visibleFileChange = turnWithFileChange.find((entry) => entry.fileChanges?.length);
 visibleFileChange?.fileChanges?.[0]?.path satisfies string | undefined;
-const fileChangeIsAfterFinalAnswer = turnWithFileChange.findIndex((entry) => entry.fileChanges?.length) > turnWithFileChange.findIndex((entry) => entry.title === "Codex");
-fileChangeIsAfterFinalAnswer satisfies boolean;
 const fileTurnProcessGroup = turnWithFileChange.find(isTurnProcessGroup);
 fileTurnProcessGroup?.processEntries?.[0]?.title satisfies string | undefined;
+fileTurnProcessGroup?.processEntries?.find((entry) => entry.fileChanges?.length)?.fileChanges?.[0]?.path satisfies string | undefined;
+const fileChangeIsFoldedIntoProcessGroup = !turnWithFileChange.some((entry) => entry.fileChanges?.length && entry.variant !== "turnProcessGroup");
+fileChangeIsFoldedIntoProcessGroup satisfies boolean;
+
+const turnWithCompaction = prepareThreadDetailTimeline([
+  {
+    id: "turn-6:user",
+    turnId: "turn-6",
+    role: "user",
+    title: "You",
+    body: "继续",
+  },
+  {
+    id: "turn-6:context-compacted",
+    turnId: "turn-6",
+    role: "system",
+    variant: "contextCompaction",
+    title: "上下文已压缩",
+    body: "当前会话上下文已压缩",
+  },
+  {
+    id: "turn-6:assistant",
+    turnId: "turn-6",
+    role: "assistant",
+    title: "Codex",
+    body: "最终总结",
+  },
+]);
+turnWithCompaction.find(isTurnProcessGroup)?.processEntries?.find((entry) => entry.variant === "contextCompaction")?.body satisfies
+  | string
+  | undefined;
 
 const inProgressTurnWithFileChange = prepareThreadDetailTimeline([
   {

@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
-import * as SecureStore from "expo-secure-store";
 
+import {
+  clearSavedConnectionConfig,
+  DEFAULT_APP_SERVER_URL,
+  loadSavedConnectionConfig,
+  saveConnectionConfig,
+} from "@/hooks/codex-app-server/connectionStorage";
 import type { ConnectionState, ReadinessStatus } from "@/types/codex";
 
 type Props = {
@@ -13,10 +18,6 @@ type Props = {
   onDisconnect: () => void;
   onProbe: (url: string, token: string) => void;
 };
-
-const STORAGE_URL_KEY = "codexRemote.appServerUrl";
-const STORAGE_TOKEN_KEY = "codexRemote.appServerToken";
-const DEFAULT_APP_SERVER_URL = "wss://your-domain.example.com";
 
 export function ConnectionPanel({ state, readiness, recentError = null, onConnect, onDisconnect, onProbe }: Props) {
   const [url, setUrl] = useState(DEFAULT_APP_SERVER_URL);
@@ -33,30 +34,19 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
 
     const restoreConfig = async () => {
       try {
-        const available = await SecureStore.isAvailableAsync();
-        if (!available) {
-          if (mounted) {
-            setStorageStatus("当前平台不支持安全保存");
-          }
-          return;
-        }
-
-        const [savedUrl, savedToken] = await Promise.all([
-          SecureStore.getItemAsync(STORAGE_URL_KEY),
-          SecureStore.getItemAsync(STORAGE_TOKEN_KEY),
-        ]);
+        const savedConfig = await loadSavedConnectionConfig();
 
         if (!mounted) {
           return;
         }
 
-        if (savedUrl) {
-          setUrl(savedUrl);
+        if (savedConfig?.url) {
+          setUrl(savedConfig.url);
         }
-        if (savedToken) {
-          setToken(savedToken);
+        if (savedConfig?.token) {
+          setToken(savedConfig.token);
         }
-        if (savedUrl || savedToken) {
+        if (savedConfig) {
           setStorageStatus("已恢复保存的连接配置");
         }
       } catch (error) {
@@ -75,19 +65,12 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
 
   const saveConfig = async () => {
     try {
-      const available = await SecureStore.isAvailableAsync();
-      if (!available) {
+      const result = await saveConnectionConfig({ url, token });
+      if (result === "unavailable") {
         setStorageStatus("当前平台不支持安全保存");
         return;
       }
 
-      // token 属于敏感配置，必须写入 SecureStore，避免落到普通本地存储。
-      await SecureStore.setItemAsync(STORAGE_URL_KEY, url.trim());
-      if (token.trim()) {
-        await SecureStore.setItemAsync(STORAGE_TOKEN_KEY, token.trim());
-      } else {
-        await SecureStore.deleteItemAsync(STORAGE_TOKEN_KEY);
-      }
       setStorageStatus("已安全保存连接配置");
     } catch (error) {
       setStorageStatus(`保存配置失败：${error instanceof Error ? error.message : String(error)}`);
@@ -136,10 +119,12 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
 
   const clearConfig = async () => {
     try {
-      const available = await SecureStore.isAvailableAsync();
-      if (available) {
-        await Promise.all([SecureStore.deleteItemAsync(STORAGE_URL_KEY), SecureStore.deleteItemAsync(STORAGE_TOKEN_KEY)]);
+      const result = await clearSavedConnectionConfig();
+      if (result === "unavailable") {
+        setStorageStatus("当前平台不支持安全保存");
+        return;
       }
+
       setUrl(DEFAULT_APP_SERVER_URL);
       setToken("");
       setStorageStatus("已清除保存的连接配置");

@@ -206,18 +206,6 @@ function isCollapsibleProcessEntry(entry: TimelineEntry, options: Options) {
     return false;
   }
 
-  if (entry.fileChanges?.length) {
-    return false;
-  }
-
-  if (entry.attachments?.length) {
-    return false;
-  }
-
-  if (entry.variant === "contextCompaction") {
-    return false;
-  }
-
   if (hasPreservedEntry([entry], options)) {
     return false;
   }
@@ -334,7 +322,7 @@ function createMergedWebSearchEntry(anchorEntry: TimelineEntry, searchEntries: T
 }
 
 function createTurnProcessEntry(finalAssistant: TimelineEntry, processEntries: TimelineEntry[]): TimelineEntry {
-  const title = "已处理";
+  const title = formatTurnProcessTitle(finalAssistant.metaLabel);
 
   return {
     id: `${finalAssistant.turnId}:process:summary`,
@@ -346,6 +334,15 @@ function createTurnProcessEntry(finalAssistant: TimelineEntry, processEntries: T
     body: title,
     processEntries,
   };
+}
+
+function formatTurnProcessTitle(metaLabel: string | undefined) {
+  if (!metaLabel) {
+    return "已处理";
+  }
+
+  const duration = metaLabel.replace(/^已处理\s*/, "").trim();
+  return duration ? `已处理 ${duration}` : "已处理";
 }
 
 function isFailedCommandEntry(entry: TimelineEntry) {
