@@ -32,6 +32,14 @@ const APPROVAL_METHODS = new Set([
   "applyPatchApproval",
 ]);
 const USER_INPUT_METHODS = new Set(["item/tool/requestUserInput"]);
+const SERVER_REQUEST_METHODS = new Set([
+  ...APPROVAL_METHODS,
+  ...USER_INPUT_METHODS,
+  "mcpServer/elicitation/request",
+  "item/tool/call",
+  "account/chatgptAuthTokens/refresh",
+  "attestation/generate",
+]);
 const INITIALIZE_TIMEOUT_MS = 8000;
 
 export class JsonRpcClient {
@@ -250,12 +258,20 @@ export class JsonRpcClient {
       }
 
       if ("method" in message && APPROVAL_METHODS.has(message.method)) {
+        this.events.onLog(`approval request received: ${message.method}`);
         this.events.onApproval(message as PendingApproval);
         return;
       }
 
       if ("method" in message && USER_INPUT_METHODS.has(message.method)) {
+        this.events.onLog(`user input request received: ${message.method}`);
         this.events.onUserInputRequest(message as PendingUserInputRequest);
+        return;
+      }
+
+      if ("method" in message && "id" in message && SERVER_REQUEST_METHODS.has(message.method)) {
+        // server -> client request 如果没有显式处理，必须打日志；否则 UI 看起来像“没收到审批/输入请求”。
+        this.events.onLog(`unsupported server request received: ${message.method}`);
         return;
       }
 

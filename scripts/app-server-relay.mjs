@@ -6,12 +6,15 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
+import { buildUpstreamRequestOptions, describeUpstream } from "./app-server-relay-upstream.mjs";
+
 const listenHost = process.env.RELAY_LISTEN_HOST || "0.0.0.0";
 const listenPort = Number(process.env.RELAY_LISTEN_PORT || "4501");
 const relayToken = process.env.RELAY_TOKEN || "";
 const upstreamUrl = new URL(process.env.UPSTREAM_WS_URL || "ws://127.0.0.1:4500");
+const upstreamUnixSocket = process.env.UPSTREAM_UNIX_SOCKET || "";
 const upstreamTokenFile = process.env.UPSTREAM_TOKEN_FILE || path.join(os.homedir(), ".codex", "app-server", "mobile.token");
-const upstreamToken = fs.readFileSync(upstreamTokenFile, "utf8").trim();
+const upstreamToken = upstreamUnixSocket ? "" : fs.readFileSync(upstreamTokenFile, "utf8").trim();
 
 const server = http.createServer((req, res) => {
   if (req.url?.startsWith("/readyz")) {
@@ -42,18 +45,14 @@ server.on("upgrade", (request, downstreamSocket) => {
     return;
   }
 
-  const upstreamRequest = http.request({
-    host: upstreamUrl.hostname,
-    port: upstreamUrl.port,
-    path: `${upstreamUrl.pathname || "/"}${upstreamUrl.search || ""}`,
-    headers: {
-      Connection: "Upgrade",
-      Upgrade: "websocket",
-      "Sec-WebSocket-Version": "13",
-      "Sec-WebSocket-Key": crypto.randomBytes(16).toString("base64"),
-      Authorization: `Bearer ${upstreamToken}`,
-    },
-  });
+  const upstreamRequest = http.request(
+    buildUpstreamRequestOptions({
+      upstreamUnixSocket,
+      upstreamUrl,
+      upstreamToken,
+      websocketKey: crypto.randomBytes(16).toString("base64"),
+    }),
+  );
 
   upstreamRequest.on("upgrade", (upstreamResponse, upstreamSocket) => {
     acceptUpgrade(downstreamSocket, String(downstreamKey));
@@ -94,7 +93,7 @@ server.listen(listenPort, listenHost, () => {
         ok: true,
         listen: `ws://${listenHost}:${listenPort}`,
         readyz: `http://${listenHost}:${listenPort}/readyz`,
-        upstream: upstreamUrl.toString(),
+        upstream: describeUpstream({ upstreamUnixSocket, upstreamUrl }),
         relayTokenRequired: Boolean(relayToken),
       },
       null,

@@ -8,6 +8,7 @@ const permissionApproval = {
     threadId: "thread-1",
     turnId: "turn-1",
     itemId: "item-1",
+    environmentId: null,
     startedAtMs: 1,
     cwd: "/tmp/project",
     reason: "需要访问项目外文件",

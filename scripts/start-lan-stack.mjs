@@ -13,11 +13,18 @@ const relayTokenFile = process.env.RELAY_TOKEN_FILE || homePath(".codex", "app-s
 const listenPort = Number(process.env.RELAY_LISTEN_PORT || "4501");
 const publicHost = process.env.CODEX_MOBILE_LAN_HOST || getLanIpAddress();
 const mobileUrl = `ws://${publicHost}:${listenPort}`;
+const useDaemonUpstream = process.env.USE_DAEMON_APP_SERVER === "1";
+const daemonSocketPath =
+  process.env.CODEX_APP_SERVER_CONTROL_SOCKET || homePath(".codex", "app-server-control", "app-server-control.sock");
 const children = [];
 
-await ensureTokenFile(mobileTokenFile, "Codex app-server token");
+if (useDaemonUpstream) {
+  await assertFile(daemonSocketPath, "Codex app-server daemon socket");
+} else {
+  await ensureTokenFile(mobileTokenFile, "Codex app-server token");
+  await assertPortFree(4500, "127.0.0.1");
+}
 await ensureTokenFile(relayTokenFile, "relay token");
-await assertPortFree(4500, "127.0.0.1");
 await assertPortFree(listenPort, "0.0.0.0");
 
 const relayToken = fs.readFileSync(relayTokenFile, "utf8").trim();
@@ -28,15 +35,17 @@ const mobileConnectionPayload = JSON.stringify({
   token: relayToken,
 });
 
-start("codex-app-server", "codex", [
-  "app-server",
-  "--listen",
-  "ws://127.0.0.1:4500",
-  "--ws-auth",
-  "capability-token",
-  "--ws-token-file",
-  mobileTokenFile,
-]);
+if (!useDaemonUpstream) {
+  start("codex-app-server", "codex", [
+    "app-server",
+    "--listen",
+    "ws://127.0.0.1:4500",
+    "--ws-auth",
+    "capability-token",
+    "--ws-token-file",
+    mobileTokenFile,
+  ]);
+}
 
 start(
   "relay",
@@ -46,12 +55,17 @@ start(
     RELAY_LISTEN_HOST: "0.0.0.0",
     RELAY_LISTEN_PORT: String(listenPort),
     RELAY_TOKEN: relayToken,
-    UPSTREAM_WS_URL: "ws://127.0.0.1:4500",
-    UPSTREAM_TOKEN_FILE: mobileTokenFile,
+    // daemon 模式下 relay 直接走 Unix socket；默认模式保持原来的 4500 WebSocket。
+    ...(useDaemonUpstream
+      ? { UPSTREAM_UNIX_SOCKET: daemonSocketPath }
+      : {
+          UPSTREAM_WS_URL: "ws://127.0.0.1:4500",
+          UPSTREAM_TOKEN_FILE: mobileTokenFile,
+        }),
   },
 );
 
-console.log("\nLAN stack is starting.");
+console.log(`\nLAN stack is starting${useDaemonUpstream ? " with daemon upstream" : ""}.`);
 console.log("Mobile URL:");
 console.log(`${mobileUrl}?relay_token=${relayToken}`);
 console.log("\nScan this QR in the mobile app connection settings:");
@@ -119,6 +133,12 @@ async function ensureTokenFile(filePath, label) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${crypto.randomBytes(32).toString("hex")}\n`, { mode: 0o600 });
   console.log(`${label} created: ${filePath}`);
+}
+
+async function assertFile(filePath, label) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`${label} not found: ${filePath}`);
+  }
 }
 
 function getLanIpAddress() {

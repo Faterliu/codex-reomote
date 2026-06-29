@@ -14,12 +14,15 @@
     "mobile:ios": "pnpm --filter mobile ios",
     "mobile:android": "pnpm --filter mobile android",
     "mobile:web": "pnpm --filter mobile web",
+    "bridge:desktop-refresh": "node scripts/desktop-refresh-bridge.mjs",
     "probe:app-server": "node scripts/probe-app-server.mjs",
     "relay:app-server": "node scripts/app-server-relay.mjs",
     "relay:cloudflare": "RELAY_LISTEN_HOST=127.0.0.1 RELAY_LISTEN_PORT=4501 node scripts/app-server-relay.mjs",
     "start:lan": "node scripts/start-lan-stack.mjs",
+    "start:lan:daemon": "USE_DAEMON_APP_SERVER=1 node scripts/start-lan-stack.mjs",
     "start:cloudflare": "node scripts/start-cloudflare-stack.mjs",
     "typecheck": "pnpm --filter mobile typecheck",
+    "test:scripts": "node --test scripts/*.test.mjs",
     "protocol:generate": "codex app-server generate-ts --out packages/protocol/src --experimental"
   },
   "devDependencies": {

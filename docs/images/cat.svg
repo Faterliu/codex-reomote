@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="A cute illustrated cat">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="66%">
+      <stop offset="0%" stop-color="#f8fbff"/>
+      <stop offset="100%" stop-color="#dbeafe"/>
+    </radialGradient>
+    <linearGradient id="fur" x1="260" x2="760" y1="180" y2="820" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f7c27d"/>
+      <stop offset="100%" stop-color="#e28b45"/>
+    </linearGradient>
+    <linearGradient id="chest" x1="350" x2="670" y1="490" y2="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fff5df"/>
+      <stop offset="100%" stop-color="#ffe0a8"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="22" stdDeviation="26" flood-color="#31506f" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <ellipse cx="512" cy="860" rx="286" ry="62" fill="#9bb9d8" opacity="0.22"/>
+
+  <g filter="url(#softShadow)">
+    <path d="M310 380 C250 272 226 188 252 156 C284 116 382 222 426 304 Z" fill="url(#fur)"/>
+    <path d="M714 380 C774 272 798 188 772 156 C740 116 642 222 598 304 Z" fill="url(#fur)"/>
+    <path d="M310 380 C292 318 280 242 286 208 C324 234 372 288 398 328 Z" fill="#ffd7a0" opacity="0.92"/>
+    <path d="M714 380 C732 318 744 242 738 208 C700 234 652 288 626 328 Z" fill="#ffd7a0" opacity="0.92"/>
+
+    <path d="M244 520 C244 360 356 258 512 258 C668 258 780 360 780 520 C780 706 666 838 512 838 C358 838 244 706 244 520 Z" fill="url(#fur)"/>
+    <path d="M352 648 C352 548 416 488 512 488 C608 488 672 548 672 648 C672 748 606 812 512 812 C418 812 352 748 352 648 Z" fill="url(#chest)"/>
+
+    <path d="M382 306 C410 286 452 274 512 274 C572 274 614 286 642 306 C606 326 560 338 512 338 C464 338 418 326 382 306 Z" fill="#f9d197" opacity="0.55"/>
+
+    <ellipse cx="402" cy="490" rx="46" ry="54" fill="#253044"/>
+    <ellipse cx="622" cy="490" rx="46" ry="54" fill="#253044"/>
+    <circle cx="386" cy="470" r="14" fill="#fff"/>
+    <circle cx="606" cy="470" r="14" fill="#fff"/>
+
+    <path d="M494 554 C502 544 522 544 530 554 C535 562 526 574 512 574 C498 574 489 562 494 554 Z" fill="#d05a5a"/>
+    <path d="M512 574 C512 602 488 612 464 596" fill="none" stroke="#7b3f30" stroke-width="8" stroke-linecap="round"/>
+    <path d="M512 574 C512 602 536 612 560 596" fill="none" stroke="#7b3f30" stroke-width="8" stroke-linecap="round"/>
+
+    <path d="M256 562 C194 548 142 548 92 562" fill="none" stroke="#7b3f30" stroke-width="8" stroke-linecap="round"/>
+    <path d="M260 610 C194 620 144 642 100 676" fill="none" stroke="#7b3f30" stroke-width="8" stroke-linecap="round"/>
+    <path d="M768 562 C830 548 882 548 932 562" fill="none" stroke="#7b3f30" stroke-width="8" stroke-linecap="round"/>
+    <path d="M764 610 C830 620 880 642 924 676" fill="none" stroke="#7b3f30" stroke-width="8" stroke-linecap="round"/>
+
+    <path d="M350 374 C374 404 414 418 456 414" fill="none" stroke="#cf773e" stroke-width="14" stroke-linecap="round" opacity="0.55"/>
+    <path d="M674 374 C650 404 610 418 568 414" fill="none" stroke="#cf773e" stroke-width="14" stroke-linecap="round" opacity="0.55"/>
+
+    <path d="M700 728 C770 712 824 748 838 800 C850 844 808 878 762 858 C716 838 700 792 726 764" fill="none" stroke="#d9823f" stroke-width="54" stroke-linecap="round"/>
+    <path d="M390 824 C386 766 418 724 466 710" fill="none" stroke="#c97639" stroke-width="34" stroke-linecap="round" opacity="0.35"/>
+    <path d="M634 824 C638 766 606 724 558 710" fill="none" stroke="#c97639" stroke-width="34" stroke-linecap="round" opacity="0.35"/>
+  </g>
+</svg>

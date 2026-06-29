@@ -8,6 +8,7 @@ import https from "node:https";
 const url = new URL(process.env.CODEX_APP_SERVER_URL || "ws://127.0.0.1:4500");
 const tokenFile = process.env.CODEX_APP_SERVER_TOKEN_FILE || "";
 const token = tokenFile ? fs.readFileSync(tokenFile, "utf8").trim() : "";
+const probeRemoteControl = process.env.PROBE_REMOTE_CONTROL === "1";
 
 const headers = token
   ? {
@@ -104,7 +105,7 @@ async function requestJsonRpcOverSocket(targetUrl, socket) {
         error: "timeout waiting for JSON-RPC response",
       });
       socket.destroy();
-    }, 8000);
+    }, probeRemoteControl ? 20000 : 8000);
 
     const reader = createFrameReader(socket, (message) => {
       if ("id" in message && pending.has(message.id)) {
@@ -155,6 +156,53 @@ async function requestJsonRpcOverSocket(targetUrl, socket) {
         });
 
         sendFrame(socket, JSON.stringify({ jsonrpc: "2.0", method: "initialized" }));
+
+        if (probeRemoteControl) {
+          const account = await request("account/read", { refreshToken: false });
+          const remoteStatusBefore = await request("remoteControl/status/read", undefined);
+          const remoteEnable = await request("remoteControl/enable", undefined);
+          const remoteStatusPolls = [];
+          for (let index = 0; index < 10; index += 1) {
+            await sleep(1000);
+            const status = await request("remoteControl/status/read", undefined);
+            remoteStatusPolls.push(status);
+            if (status?.status === "connected" || status?.status === "errored") {
+              break;
+            }
+          }
+          const remoteStatusAfter = remoteStatusPolls.at(-1) ?? remoteEnable;
+          const pairing =
+            remoteEnable?.environmentId || remoteStatusAfter?.environmentId
+              ? await request("remoteControl/pairing/start", { manualCode: true })
+              : null;
+          const environmentId = pairing?.environmentId ?? remoteEnable?.environmentId ?? remoteStatusAfter?.environmentId ?? null;
+          const clients = environmentId
+            ? await request("remoteControl/client/list", {
+                environmentId,
+                limit: 20,
+                order: "desc",
+              })
+            : null;
+
+          clearTimeout(timer);
+          reader.stop();
+          resolve({
+            ok: true,
+            url: targetUrl.toString(),
+            initialize,
+            account,
+            remoteControl: {
+              before: remoteStatusBefore,
+              enable: remoteEnable,
+              polls: remoteStatusPolls,
+              after: remoteStatusAfter,
+              pairing,
+              clients,
+            },
+          });
+          socket.destroy();
+          return;
+        }
 
         const threads = await request("thread/list", {
           limit: 5,
@@ -212,6 +260,12 @@ async function requestJsonRpcOverSocket(targetUrl, socket) {
         );
       });
     }
+  });
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
   });
 }
 
