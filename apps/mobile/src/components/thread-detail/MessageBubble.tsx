@@ -179,10 +179,13 @@ export const MessageBubble = memo(function MessageBubble({
               shouldRenderMarkdown ? (
                 <Markdown style={markdownStyles}>{visibleBody}</Markdown>
               ) : (
-              <Text style={[styles.bubbleBody, entry.role === "user" && styles.userBubbleBody]}>{visibleBody}</Text>
+                <Text style={[styles.bubbleBody, entry.role === "user" && styles.userBubbleBody]}>{visibleBody}</Text>
               )
             ) : null}
             {shouldCollapse ? <Text style={styles.expandHint}>{expanded ? "收起" : "展开全文"}</Text> : null}
+            {entry.role === "assistant" && entry.timestampMs ? (
+              <Text style={styles.agentTimeText}>{formatMessageTime(entry.timestampMs)}</Text>
+            ) : null}
             {entry.role === "user" ? (
               <View style={styles.userMessageFooter}>
                 {entry.timestampMs ? <Text style={styles.userTimeText}>{formatMessageTime(entry.timestampMs)}</Text> : <View />}
@@ -401,6 +404,12 @@ const styles = StyleSheet.create({
     color: "#dce7ff",
     fontSize: 11,
     fontWeight: "700",
+  },
+  agentTimeText: {
+    color: "#8a94a6",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 2,
   },
   copyButton: {
     alignItems: "center",
