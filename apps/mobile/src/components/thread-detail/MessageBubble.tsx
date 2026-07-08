@@ -71,8 +71,8 @@ export const MessageBubble = memo(function MessageBubble({
   const [webSearchExpanded, setWebSearchExpanded] = useState(!defaultCollapseWebSearch);
   const [turnProcessExpanded, setTurnProcessExpanded] = useState(defaultExpandTurnProcess);
   const isToolCard = entry.role === "tool" && (isFileChange || isCommandGroup || isWebSearchGroup || isTurnProcessGroup);
-  const canCopy = entry.role === "user" && Boolean(entry.body.trim());
   const shouldRenderMarkdown = entry.role === "assistant" && entry.title === "Codex";
+  const canCopy = (entry.role === "user" || shouldRenderMarkdown) && Boolean(entry.body.trim());
   const shouldShowBubbleTitle = entry.role !== "user" && !shouldRenderMarkdown;
   const shouldShowMetaLabel = Boolean(entry.metaLabel && !shouldRenderMarkdown);
   const showPendingSpinner = entry.role === "user" && entry.pending && !entry.failed;
@@ -216,8 +216,15 @@ export const MessageBubble = memo(function MessageBubble({
                 ))}
               </View>
             ) : null}
-            {entry.role === "assistant" && entry.timestampMs ? (
-              <Text style={styles.agentTimeText}>{formatMessageTime(entry.timestampMs)}</Text>
+            {entry.role === "assistant" ? (
+              <View style={styles.agentMessageFooter}>
+                {entry.timestampMs ? <Text style={styles.agentTimeText}>{formatMessageTime(entry.timestampMs)}</Text> : <View />}
+                {canCopy ? (
+                  <Pressable onPress={() => void copyMessage()} style={styles.agentCopyButton}>
+                    <Ionicons color="#516071" name={copied ? "checkmark" : "copy-outline"} size={14} />
+                  </Pressable>
+                ) : null}
+              </View>
             ) : null}
             {entry.role === "user" ? (
               <View style={styles.userMessageFooter}>
@@ -469,6 +476,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
     minHeight: 22,
   },
+  agentMessageFooter: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between",
+    marginTop: 2,
+    minHeight: 26,
+  },
   userTimeText: {
     color: "#dce7ff",
     fontSize: 11,
@@ -478,7 +493,6 @@ const styles = StyleSheet.create({
     color: "#8a94a6",
     fontSize: 11,
     fontWeight: "700",
-    marginTop: 2,
   },
   downloadCards: {
     gap: 8,
@@ -533,6 +547,16 @@ const styles = StyleSheet.create({
     height: 24,
     justifyContent: "center",
     width: 24,
+  },
+  agentCopyButton: {
+    alignItems: "center",
+    backgroundColor: "#f2f5f9",
+    borderColor: "#d8dee8",
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 26,
+    justifyContent: "center",
+    width: 26,
   },
   pendingText: {
     color: "#6b7788",
