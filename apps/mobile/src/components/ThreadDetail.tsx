@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { Alert, Image, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -57,6 +57,7 @@ type Props = {
   onSelectPermissionMode?: (modeId: PermissionModeId) => void;
   onSend: (text: string, mentions?: ComposerMention[], images?: ComposerImageAttachment[]) => void | Promise<void>;
   onRunShellCommand?: (command: string) => void | Promise<void>;
+  onDownloadHostFile?: (hostPath: string) => Promise<{ filename: string; localUri: string }>;
   onInterrupt: () => void;
   onResolveApproval?: (decision: ApprovalDecision) => void;
   onResolveUserInputRequest?: (response: ToolRequestUserInputResponse) => void;
@@ -94,6 +95,7 @@ export function ThreadDetail({
   onSelectPermissionMode,
   onSend,
   onRunShellCommand,
+  onDownloadHostFile,
   onInterrupt,
   onResolveApproval,
   onResolveUserInputRequest,
@@ -267,6 +269,19 @@ export function ThreadDetail({
     setCommandSheetVisible(false);
   };
 
+  const downloadHostFile = useCallback(async (hostPath: string) => {
+    if (!onDownloadHostFile) {
+      return;
+    }
+
+    try {
+      const result = await onDownloadHostFile(hostPath);
+      Alert.alert("下载完成", `${result.filename}\n${result.localUri}`);
+    } catch (error) {
+      Alert.alert("下载失败", error instanceof Error ? error.message : "无法读取或保存这个文件");
+    }
+  }, [onDownloadHostFile]);
+
   const selectedModelLabel = models.find((model) => model.model === selectedModelId)?.displayName ?? selectedModelId;
   const selectedPermissionModeLabel = getPermissionModeLabel(selectedPermissionModeId, permissionProfiles);
   const selectedPermissionModeIsFull = isBuiltInPermissionModeId(selectedPermissionModeId) && selectedPermissionModeId === "full";
@@ -290,6 +305,7 @@ export function ThreadDetail({
         onOpenAttachment={setSelectedAttachment}
         onOpenAllFileChanges={setSelectedFileChanges}
         onOpenCommandOutput={setSelectedCommandEntry}
+        onDownloadHostFile={onDownloadHostFile ? downloadHostFile : undefined}
         workspacePath={workspacePath}
         onOpenFileChange={setSelectedFileChange}
         onResolveApproval={onResolveApproval}
@@ -298,7 +314,18 @@ export function ThreadDetail({
         onResolveUserInputRequest={onResolveUserInputRequest}
       />
     ),
-    [approval, approvalEntryId, isResponding, onResolveApproval, onResolveUserInputRequest, respondingTurnId, userInputEntryId, userInputRequest, workspacePath],
+    [
+      approval,
+      approvalEntryId,
+      isResponding,
+      downloadHostFile,
+      onResolveApproval,
+      onResolveUserInputRequest,
+      respondingTurnId,
+      userInputEntryId,
+      userInputRequest,
+      workspacePath,
+    ],
   );
 
   if (!thread && !isDraft) {

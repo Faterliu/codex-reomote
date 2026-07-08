@@ -7,6 +7,13 @@ import type { TimelineAttachment, TimelineEntry } from "@/lib/threadFormat";
 import type { ComposerImageAttachment } from "@/types/composer";
 
 const UPLOAD_DIR_NAME = ".codex-mobile/uploads";
+const DOWNLOAD_DIR_NAME = "codex-downloads";
+
+export type DownloadedHostFile = {
+  filename: string;
+  localUri: string;
+};
+
 export async function uploadComposerImages(client: JsonRpcClient, cwd: string, images: ComposerImageAttachment[]) {
   if (!images.length) {
     return [];
@@ -35,6 +42,27 @@ export async function uploadComposerImages(client: JsonRpcClient, cwd: string, i
   }
 
   return uploadedPaths;
+}
+
+export async function downloadHostFile(client: JsonRpcClient, hostPath: string): Promise<DownloadedHostFile> {
+  if (!FileSystem.documentDirectory) {
+    throw new Error("手机本地文档目录不可用，无法保存文件");
+  }
+
+  const response = await client.request<FsReadFileResponse>("fs/readFile", {
+    path: hostPath,
+  });
+  const filename = buildDownloadFilename(hostPath);
+  const downloadDir = `${FileSystem.documentDirectory}${DOWNLOAD_DIR_NAME}/`;
+
+  // 手机端先落到 App 私有文档目录；后续如果接入系统分享/安装，再从这个 localUri 交给外部应用。
+  await FileSystem.makeDirectoryAsync(downloadDir, { intermediates: true });
+  const localUri = `${downloadDir}${filename}`;
+  await FileSystem.writeAsStringAsync(localUri, response.dataBase64, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  return { filename, localUri };
 }
 
 export async function hydrateLocalImageAttachments(
@@ -129,6 +157,12 @@ function joinHostPath(basePath: string, childPath: string) {
 function sanitizeFilename(name: string) {
   const cleaned = name.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return cleaned || "image.jpg";
+}
+
+function buildDownloadFilename(hostPath: string) {
+  const rawName = decodeURIComponent(hostPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "download.bin");
+  const safeName = sanitizeFilename(rawName);
+  return `${Date.now()}-${safeName}`;
 }
 
 function guessMimeType(path: string) {

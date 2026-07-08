@@ -46,7 +46,7 @@ const settingsParams: ThreadSettingsUpdateParams = {
 settingsParams.permissions satisfies string | null | undefined;
 
 const profiles: PermissionProfileListResponse = {
-  data: [{ id: "full-access", description: "全部权限" }],
+  data: [{ id: "full-access", description: "全部权限", allowed: true }],
   nextCursor: null,
 };
 

@@ -1,5 +1,5 @@
 import type { ServerNotification } from "@codex-mobile/protocol";
-import type { Thread, ThreadItem } from "@codex-mobile/protocol/v2";
+import type { Thread, ThreadItem, ThreadStatus, Turn } from "@codex-mobile/protocol/v2";
 
 import { flattenTurns, timelineEntryFromThreadItem, type TimelineEntry } from "@/lib/threadFormat";
 import type { JsonRpcIncoming, PendingApproval, PendingUserInputRequest } from "@/types/codex";
@@ -124,12 +124,7 @@ export function handleNotification(message: JsonRpcIncoming, handlers: Notificat
   }
 
   if (notification.method === "thread/status/changed") {
-    handlers.setThreads((current) =>
-      current.map((thread) => (thread.id === notification.params.threadId ? { ...thread, status: notification.params.status } : thread)),
-    );
-    handlers.setSelectedThread((thread) =>
-      thread && thread.id === notification.params.threadId ? { ...thread, status: notification.params.status } : thread,
-    );
+    updateThreadMetadata(handlers, notification.params.threadId, { status: notification.params.status });
   }
 
   if (notification.method === "thread/archived" || notification.method === "thread/closed") {
@@ -150,12 +145,7 @@ export function handleNotification(message: JsonRpcIncoming, handlers: Notificat
   if (notification.method === "turn/started") {
     if (notification.params.threadId === handlers.selectedThreadIdRef.current) {
       handlers.setActiveTurnId(notification.params.turn.id);
-      handlers.setSelectedThread((thread) =>
-        thread && thread.id === notification.params.threadId ? { ...thread, status: { type: "active", activeFlags: [] } } : thread,
-      );
-      handlers.setThreads((current) =>
-        current.map((thread) => (thread.id === notification.params.threadId ? { ...thread, status: { type: "active", activeFlags: [] } } : thread)),
-      );
+      updateThreadMetadata(handlers, notification.params.threadId, buildTurnThreadMetadata(notification.params.turn, { type: "active", activeFlags: [] }));
       handlers.setTimeline((current) => upsertTimelineEntries(current, flattenTurns([notification.params.turn])));
     }
   }
@@ -164,13 +154,28 @@ export function handleNotification(message: JsonRpcIncoming, handlers: Notificat
     if (notification.params.threadId === handlers.selectedThreadIdRef.current) {
       flushBufferedDeltas(handlers.deltaBufferRef, handlers.setTimeline);
       handlers.setActiveTurnId((current) => (current === notification.params.turn.id ? null : current));
-      handlers.setSelectedThread((thread) => (thread && thread.id === notification.params.threadId ? { ...thread, status: { type: "idle" } } : thread));
-      handlers.setThreads((current) =>
-        current.map((thread) => (thread.id === notification.params.threadId ? { ...thread, status: { type: "idle" } } : thread)),
-      );
+      updateThreadMetadata(handlers, notification.params.threadId, buildTurnThreadMetadata(notification.params.turn, { type: "idle" }));
       handlers.setTimeline((current) => upsertTimelineEntries(current, flattenTurns([notification.params.turn])));
     }
   }
+}
+
+function updateThreadMetadata(
+  handlers: NotificationHandlers,
+  threadId: string,
+  metadata: Partial<Pick<Thread, "preview" | "recencyAt" | "status" | "updatedAt">>,
+) {
+  handlers.setSelectedThread((thread) => (thread && thread.id === threadId ? { ...thread, ...metadata } : thread));
+  handlers.setThreads((current) => current.map((thread) => (thread.id === threadId ? { ...thread, ...metadata } : thread)));
+}
+
+function buildTurnThreadMetadata(turn: Turn, status: ThreadStatus): Partial<Pick<Thread, "recencyAt" | "status" | "updatedAt">> {
+  const timestamp = turn.completedAt ?? turn.startedAt;
+
+  return {
+    status,
+    ...(timestamp ? { updatedAt: timestamp, recencyAt: timestamp } : {}),
+  };
 }
 
 function upsertTimelineEntries(current: TimelineEntry[], entries: TimelineEntry[]) {

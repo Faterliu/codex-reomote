@@ -44,7 +44,7 @@ import {
 } from "./codex-app-server/api";
 import { buildPendingMessageBody, buildTurnInput } from "./codex-app-server/composer";
 import { compactRpcError, getErrorMessage } from "./codex-app-server/errorFormat";
-import { applyLocalImageCache, hydrateLocalImageAttachments, uploadComposerImages } from "./codex-app-server/imageTransfer";
+import { applyLocalImageCache, downloadHostFile, hydrateLocalImageAttachments, uploadComposerImages } from "./codex-app-server/imageTransfer";
 import { handleNotification } from "./codex-app-server/notifications";
 import {
   clearDeltaTimer,
@@ -215,7 +215,7 @@ export function useCodexAppServer() {
     setRecentError(null);
     void refreshThreads();
     if (selectedThread) {
-      void refreshSelectedThread({ silent: true });
+      void recoverSelectedThreadSubscription(selectedThread);
     }
   }, [state]);
 
@@ -375,7 +375,7 @@ export function useCodexAppServer() {
     setActiveTurnId(null);
 
     try {
-      const resumed = await resumeThreadWithInitialTurnPage(client, thread);
+      const resumed = await resumeThreadWithInitialTurnPage(client, thread, { force: thread.status.type === "active" });
       if (selectedThreadIdRef.current !== thread.id) {
         return;
       }
@@ -394,6 +394,42 @@ export function useCodexAppServer() {
       if (selectedThreadIdRef.current === thread.id) {
         setIsOpeningThread(false);
       }
+    }
+  };
+
+  const recoverSelectedThreadSubscription = async (thread: Thread) => {
+    const threadId = thread.id;
+
+    try {
+      // 重连后强制 resume 当前 thread，触发 app-server 重新 attach listener 并重放未决审批 request。
+      const resumed = await resumeThreadWithInitialTurnPage(client, thread, { force: true });
+      if (selectedThreadIdRef.current !== threadId) {
+        return;
+      }
+
+      const resumedThread = resumed.thread;
+      setSelectedThread(resumedThread);
+      setThreads((current) => current.map((candidate) => (candidate.id === resumedThread.id ? { ...candidate, ...resumedThread } : candidate)));
+
+      const page = resumed.initialTurnsPage ?? (await loadTurnPage(client, resumedThread.id, null));
+      if (selectedThreadIdRef.current !== threadId) {
+        return;
+      }
+
+      const nextTimeline = flattenTurns(page.turns);
+      const nextActiveTurnId = getInProgressTurnId(page.turns);
+      setActiveTurnId(nextActiveTurnId);
+      setOlderTurnsCursor(resolveOlderTurnsCursor(olderTurnsCursorRef.current, page.nextCursor, timelineRef.current, nextTimeline));
+      setTimeline((current) => {
+        const mergedTimeline = mergeTimelineSnapshot(current, nextTimeline, { preserveTurnIds: [nextActiveTurnId] });
+        return isSameTimeline(current, mergedTimeline) ? current : mergedTimeline;
+      });
+      setPendingEntries((current) => reconcilePendingEntries(current, nextTimeline, resumedThread.id));
+    } catch (error) {
+      const message = compactRpcError(error);
+      setRecentError(`resume recovery failed: ${message}`);
+      setLogs((current) => [`resume recovery failed: ${message}`, ...current].slice(0, 30));
+      await refreshSelectedThread({ silent: true });
     }
   };
 
@@ -510,6 +546,19 @@ export function useCodexAppServer() {
       const message = compactRpcError(error);
       setRecentError(`shell command failed: ${message}`);
       setLogs((current) => [`shell command failed: ${message}`, ...current].slice(0, 30));
+    }
+  };
+
+  const downloadFileFromHost = async (hostPath: string) => {
+    try {
+      const result = await downloadHostFile(client, hostPath);
+      setLogs((current) => [`downloaded ${hostPath} -> ${result.localUri}`, ...current].slice(0, 30));
+      return result;
+    } catch (error) {
+      const message = compactRpcError(error);
+      setRecentError(`download failed: ${message}`);
+      setLogs((current) => [`download failed: ${message}`, ...current].slice(0, 30));
+      throw error;
     }
   };
 
@@ -854,7 +903,7 @@ export function useCodexAppServer() {
       setSelectedThread(threadResponse.thread);
       setActiveTurnId(nextActiveTurnId);
       setThreads((current) =>
-        current.map((thread) => (thread.id === threadResponse.thread.id ? { ...thread, status: threadResponse.thread.status } : thread)),
+        current.map((thread) => (thread.id === threadResponse.thread.id ? { ...thread, ...threadResponse.thread } : thread)),
       );
       setOlderTurnsCursor(resolveOlderTurnsCursor(olderTurnsCursorRef.current, page.nextCursor, timelineRef.current, nextTimeline));
       setTimeline((current) => {
@@ -923,6 +972,7 @@ export function useCodexAppServer() {
     restoreThread,
     startCurrentReview,
     runShellCommand,
+    downloadFileFromHost,
     interruptTurn,
     resolveApproval,
     resolveUserInputRequest,

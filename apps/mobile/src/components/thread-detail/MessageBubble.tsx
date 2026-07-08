@@ -1,6 +1,6 @@
 import type { ToolRequestUserInputResponse } from "@codex-mobile/protocol/v2";
 import { Ionicons } from "@expo/vector-icons";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import Markdown from "react-native-markdown-display";
@@ -14,6 +14,7 @@ import type { PendingApproval, PendingUserInputRequest } from "@/types/codex";
 import { AttachmentGallery } from "./AttachmentGallery";
 import { CommandExecutionCard } from "./CommandExecutionCard";
 import { CommandGroupCard } from "./CommandGroupCard";
+import { extractDownloadableHostFilePaths } from "./downloadableHostFiles";
 import { FileChangeCard } from "./FileChangeCard";
 import { formatMessageTime } from "./utils";
 
@@ -32,6 +33,7 @@ type Props = {
   onOpenAllFileChanges: (fileChanges: TimelineFileChange[]) => void;
   onOpenCommandOutput: (entry: TimelineEntry) => void;
   onOpenFileChange: (fileChange: TimelineFileChange) => void;
+  onDownloadHostFile?: (hostPath: string) => void | Promise<void>;
   onResolveApproval?: (decision: ApprovalDecision) => void;
   onResolveUserInputRequest?: (response: ToolRequestUserInputResponse) => void;
 };
@@ -51,11 +53,13 @@ export const MessageBubble = memo(function MessageBubble({
   onOpenAllFileChanges,
   onOpenCommandOutput,
   onOpenFileChange,
+  onDownloadHostFile,
   onResolveApproval,
   onResolveUserInputRequest,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
   const shouldCollapse = entry.body.length > 1200;
   const fallbackBody = entry.streaming ? "正在生成..." : "(empty)";
   const visibleBody = shouldCollapse && !expanded ? `${entry.body.slice(0, 1200)}\n\n...[tap to expand]` : entry.body || fallbackBody;
@@ -76,6 +80,10 @@ export const MessageBubble = memo(function MessageBubble({
   const showBubbleHeader = shouldShowBubbleTitle || Boolean(shouldShowMetaLabel || entry.streaming || showPendingText || entry.failed);
   const matchedApproval = approval && onResolveApproval && approvalEntryId === entry.id ? approval : null;
   const matchedUserInputRequest = userInputRequest && onResolveUserInputRequest && userInputEntryId === entry.id ? userInputRequest : null;
+  const downloadableHostFilePaths = useMemo(
+    () => (entry.role === "assistant" && onDownloadHostFile ? extractDownloadableHostFilePaths(entry.body) : []),
+    [entry.body, entry.role, onDownloadHostFile],
+  );
 
   useEffect(() => {
     if (isWebSearchGroup && defaultCollapseWebSearch) {
@@ -97,6 +105,19 @@ export const MessageBubble = memo(function MessageBubble({
     await Clipboard.setStringAsync(entry.body);
     setCopied(true);
     setTimeout(() => setCopied(false), 1200);
+  };
+
+  const downloadHostFile = async (hostPath: string) => {
+    if (!onDownloadHostFile || downloadingPath) {
+      return;
+    }
+
+    setDownloadingPath(hostPath);
+    try {
+      await onDownloadHostFile(hostPath);
+    } finally {
+      setDownloadingPath(null);
+    }
   };
 
   return (
@@ -183,6 +204,18 @@ export const MessageBubble = memo(function MessageBubble({
               )
             ) : null}
             {shouldCollapse ? <Text style={styles.expandHint}>{expanded ? "收起" : "展开全文"}</Text> : null}
+            {downloadableHostFilePaths.length ? (
+              <View style={styles.downloadCards}>
+                {downloadableHostFilePaths.map((hostPath) => (
+                  <HostFileDownloadCard
+                    downloading={downloadingPath === hostPath}
+                    hostPath={hostPath}
+                    key={hostPath}
+                    onPress={() => void downloadHostFile(hostPath)}
+                  />
+                ))}
+              </View>
+            ) : null}
             {entry.role === "assistant" && entry.timestampMs ? (
               <Text style={styles.agentTimeText}>{formatMessageTime(entry.timestampMs)}</Text>
             ) : null}
@@ -248,6 +281,7 @@ function TurnProcessSummary({
   onOpenAllFileChanges,
   onOpenCommandOutput,
   onOpenFileChange,
+  onDownloadHostFile,
 }: {
   compact: boolean;
   entry: TimelineEntry;
@@ -257,6 +291,7 @@ function TurnProcessSummary({
   onOpenAllFileChanges: (fileChanges: TimelineFileChange[]) => void;
   onOpenCommandOutput: (entry: TimelineEntry) => void;
   onOpenFileChange: (fileChange: TimelineFileChange) => void;
+  onDownloadHostFile?: (hostPath: string) => void | Promise<void>;
 }) {
   const processEntries = entry.processEntries ?? [];
 
@@ -281,6 +316,7 @@ function TurnProcessSummary({
               onOpenAllFileChanges={onOpenAllFileChanges}
               onOpenCommandOutput={onOpenCommandOutput}
               onOpenFileChange={onOpenFileChange}
+              onDownloadHostFile={onDownloadHostFile}
               workspacePath={workspacePath}
             />
           ))}
@@ -288,6 +324,39 @@ function TurnProcessSummary({
       ) : null}
     </View>
   );
+}
+
+function HostFileDownloadCard({
+  downloading,
+  hostPath,
+  onPress,
+}: {
+  downloading: boolean;
+  hostPath: string;
+  onPress: () => void;
+}) {
+  const filename = getFilename(hostPath);
+
+  return (
+    <Pressable disabled={downloading} onPress={onPress} style={[styles.downloadCard, downloading && styles.downloadCardDisabled]}>
+      <View style={styles.downloadIcon}>
+        {downloading ? <ActivityIndicator color="#2454d6" size="small" /> : <Ionicons color="#2454d6" name="download-outline" size={19} />}
+      </View>
+      <View style={styles.downloadText}>
+        <Text numberOfLines={1} style={styles.downloadTitle}>
+          {filename}
+        </Text>
+        <Text numberOfLines={1} style={styles.downloadPath}>
+          {hostPath}
+        </Text>
+      </View>
+      <Text style={styles.downloadAction}>{downloading ? "下载中" : "下载到手机"}</Text>
+    </Pressable>
+  );
+}
+
+function getFilename(path: string) {
+  return decodeURIComponent(path.split("/").filter(Boolean).at(-1) ?? "download.bin");
 }
 
 function getWebSearchIconName(icon: NonNullable<TimelineEntry["webSearchActions"]>[number]["icon"]) {
@@ -410,6 +479,52 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     marginTop: 2,
+  },
+  downloadCards: {
+    gap: 8,
+    marginTop: 6,
+  },
+  downloadCard: {
+    alignItems: "center",
+    backgroundColor: "#f6f8fb",
+    borderColor: "#d8dee8",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  downloadCardDisabled: {
+    opacity: 0.72,
+  },
+  downloadIcon: {
+    alignItems: "center",
+    backgroundColor: "#e8eefb",
+    borderRadius: 999,
+    height: 34,
+    justifyContent: "center",
+    width: 34,
+  },
+  downloadText: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  downloadTitle: {
+    color: "#182230",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  downloadPath: {
+    color: "#6b7788",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  downloadAction: {
+    color: "#2454d6",
+    fontSize: 12,
+    fontWeight: "900",
   },
   copyButton: {
     alignItems: "center",

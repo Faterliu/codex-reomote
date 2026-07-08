@@ -32,14 +32,15 @@ export async function ensureThreadResumed(client: JsonRpcClient, thread: Thread)
   return resumed.thread;
 }
 
-export async function resumeThreadWithInitialTurnPage(client: JsonRpcClient, thread: Thread) {
-  if (thread.status.type !== "notLoaded") {
+export async function resumeThreadWithInitialTurnPage(client: JsonRpcClient, thread: Thread, options: { force?: boolean } = {}) {
+  if (!options.force && thread.status.type !== "notLoaded") {
     return {
       thread,
       initialTurnsPage: null,
     };
   }
 
+  // 运行中的 thread 也需要重新 resume，app-server 会在 attach listener 后重放未决审批 request。
   const resumed = await client.request<ThreadResumeResponse>("thread/resume", {
     threadId: thread.id,
     excludeTurns: true,

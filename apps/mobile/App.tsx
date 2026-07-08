@@ -100,6 +100,7 @@ export default function App() {
               onBack={closeThread}
               onArchiveThread={codex.archiveSelectedThread}
               onCreateNew={startDraftThread}
+              onDownloadHostFile={codex.downloadFileFromHost}
               onInterrupt={codex.interruptTurn}
               onLoadMore={codex.loadOlderMessages}
               onRefresh={codex.refreshSelectedThread}

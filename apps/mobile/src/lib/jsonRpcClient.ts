@@ -39,6 +39,7 @@ const SERVER_REQUEST_METHODS = new Set([
   "item/tool/call",
   "account/chatgptAuthTokens/refresh",
   "attestation/generate",
+  "currentTime/read",
 ]);
 const INITIALIZE_TIMEOUT_MS = 8000;
 
@@ -204,6 +205,24 @@ export class JsonRpcClient {
     );
   }
 
+  private resolveCurrentTimeRequest(request: Extract<JsonRpcIncoming, { method: "currentTime/read" }>) {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      this.markSocketUnavailable("current time request received while socket is not open");
+      return;
+    }
+
+    // currentTime/read 是轻量 server -> client request，直接返回移动端本机 Unix 秒。
+    this.socket.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: request.id,
+        result: {
+          currentTimeAt: Math.floor(Date.now() / 1000),
+        },
+      }),
+    );
+  }
+
   private async initialize(socket: WebSocket) {
     try {
       await withTimeout(
@@ -266,6 +285,12 @@ export class JsonRpcClient {
       if ("method" in message && USER_INPUT_METHODS.has(message.method)) {
         this.events.onLog(`user input request received: ${message.method}`);
         this.events.onUserInputRequest(message as PendingUserInputRequest);
+        return;
+      }
+
+      if ("method" in message && "id" in message && message.method === "currentTime/read") {
+        this.events.onLog("current time request received");
+        this.resolveCurrentTimeRequest(message);
         return;
       }
 

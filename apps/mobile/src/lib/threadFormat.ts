@@ -52,6 +52,7 @@ const MAX_TIMELINE_BODY_CHARS = 4000;
 type CollabAgentToolCallItem = Extract<ThreadItem, { type: "collabAgentToolCall" }>;
 type HookPromptItem = Extract<ThreadItem, { type: "hookPrompt" }>;
 type ImageGenerationItem = Extract<ThreadItem, { type: "imageGeneration" }>;
+type SubAgentActivityItem = Extract<ThreadItem, { type: "subAgentActivity" }>;
 
 export function formatTime(seconds: number) {
   return new Date(seconds * 1000).toLocaleString();
@@ -257,6 +258,15 @@ function itemToTimelineEntry(
         body: clipTimelineBody(formatCollabAgentToolBody(item)),
         streaming: options.streaming || item.status === "inProgress",
       };
+    case "subAgentActivity":
+      return {
+        id: entryId,
+        turnId,
+        role: "tool",
+        title: formatSubAgentActivityTitle(item),
+        timestampMs: options.timestampMs ?? undefined,
+        body: clipTimelineBody(formatSubAgentActivityBody(item)),
+      };
     case "webSearch": {
       const action = formatWebSearchAction(item.query, item.action);
       return {
@@ -308,6 +318,15 @@ function itemToTimelineEntry(
         streaming: options.streaming || item.status === "inProgress",
       };
     }
+    case "sleep":
+      return {
+        id: entryId,
+        turnId,
+        role: "system",
+        title: "等待",
+        timestampMs: options.timestampMs ?? undefined,
+        body: `等待 ${formatDuration(item.durationMs)}`,
+      };
     case "enteredReviewMode":
       return {
         id: entryId,
@@ -420,6 +439,25 @@ function formatCollabAgentStatus(status: CollabAgentToolCallItem["status"]) {
       return "已完成";
     case "failed":
       return "失败";
+  }
+}
+
+function formatSubAgentActivityTitle(item: SubAgentActivityItem) {
+  return `子 Agent · ${formatSubAgentActivityKind(item.kind)}`;
+}
+
+function formatSubAgentActivityBody(item: SubAgentActivityItem) {
+  return [`线程：${item.agentThreadId}`, `路径：${item.agentPath}`].join("\n");
+}
+
+function formatSubAgentActivityKind(kind: SubAgentActivityItem["kind"]) {
+  switch (kind) {
+    case "started":
+      return "已启动";
+    case "interacted":
+      return "已交互";
+    case "interrupted":
+      return "已中断";
   }
 }
 
