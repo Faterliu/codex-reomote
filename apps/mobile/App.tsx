@@ -15,6 +15,7 @@ export default function App() {
   const codex = useCodexAppServer();
   const [activeTab, setActiveTab] = useState<RootTab>("threads");
   const [isDraftThread, setIsDraftThread] = useState(false);
+  const [draftCwd, setDraftCwd] = useState("");
   const autoConnectAttemptedRef = useRef(false);
   const isDetailView = Boolean(codex.selectedThread) || isDraftThread;
 
@@ -55,7 +56,9 @@ export default function App() {
   };
 
   const startDraftThread = () => {
+    const defaultCwd = codex.selectedThread?.cwd || codex.recentCwds[0] || "";
     codex.closeThread();
+    setDraftCwd(defaultCwd);
     setIsDraftThread(true);
   };
 
@@ -64,7 +67,7 @@ export default function App() {
     mentions: Parameters<typeof codex.sendMessage>[1] = [],
     images: ComposerImageAttachment[] = [],
   ) => {
-    await codex.createThread(null, text, mentions, images);
+    await codex.createThread(draftCwd, text, mentions, images);
     setIsDraftThread(false);
   };
 
@@ -82,6 +85,7 @@ export default function App() {
             <ThreadDetail
               approval={codex.approval}
               userInputRequest={codex.userInputRequest}
+              draftCwd={draftCwd}
               hasMoreMessages={isDraftThread ? false : codex.hasMoreMessages}
               isLoadingPickerData={codex.isLoadingPickerData}
               isDraft={isDraftThread}
@@ -93,12 +97,14 @@ export default function App() {
               models={codex.pickerData.models}
               permissionProfiles={codex.pickerData.permissionProfiles}
               plugins={codex.pickerData.plugins}
+              recentCwds={codex.recentCwds}
               selectedModelId={codex.selectedModelId}
               selectedPermissionModeId={codex.selectedPermissionModeId}
               statusLabel={isDraftThread ? "新会话" : codex.statusLabel}
               skills={codex.pickerData.skills}
               onBack={closeThread}
               onArchiveThread={codex.archiveSelectedThread}
+              onChangeDraftCwd={setDraftCwd}
               onCreateNew={startDraftThread}
               onDownloadHostFile={codex.downloadFileFromHost}
               onInterrupt={codex.interruptTurn}

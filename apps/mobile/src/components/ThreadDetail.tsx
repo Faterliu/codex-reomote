@@ -29,6 +29,7 @@ type Props = {
   thread: Thread | null;
   timeline: TimelineEntry[];
   isDraft?: boolean;
+  draftCwd?: string;
   isLoading?: boolean;
   isLoadingMore?: boolean;
   isRefreshing?: boolean;
@@ -38,6 +39,7 @@ type Props = {
   hasMoreMessages?: boolean;
   approval?: PendingApproval | null;
   userInputRequest?: PendingUserInputRequest | null;
+  recentCwds?: string[];
   isLoadingPickerData?: boolean;
   models?: Model[];
   permissionProfiles?: PermissionProfileSummary[];
@@ -47,6 +49,7 @@ type Props = {
   skills?: SkillMetadata[];
   onBack: () => void;
   onCreateNew?: () => void;
+  onChangeDraftCwd?: (cwd: string) => void;
   onArchiveThread?: () => void | Promise<void>;
   onLoadMore: () => void;
   onRefresh: () => void;
@@ -67,6 +70,7 @@ export function ThreadDetail({
   thread,
   timeline,
   isDraft = false,
+  draftCwd = "",
   isLoading = false,
   isLoadingMore = false,
   isRefreshing = false,
@@ -76,6 +80,7 @@ export function ThreadDetail({
   hasMoreMessages = false,
   approval = null,
   userInputRequest = null,
+  recentCwds = [],
   isLoadingPickerData = false,
   models = [],
   permissionProfiles = [],
@@ -85,6 +90,7 @@ export function ThreadDetail({
   skills = [],
   onBack,
   onCreateNew,
+  onChangeDraftCwd,
   onArchiveThread,
   onLoadMore,
   onRefresh,
@@ -416,7 +422,30 @@ export function ThreadDetail({
           isDraft ? (
             <View style={[styles.emptyState, { minHeight: emptyStateMinHeight }]}>
               <Text style={styles.draftTitle}>新会话</Text>
-              <Text style={styles.draftText}>直接输入第一条消息开始。</Text>
+              <Text style={styles.draftText}>确认工作目录后，输入第一条消息开始。</Text>
+              <View style={styles.draftCwdPanel}>
+                <Text style={styles.draftCwdLabel}>工作目录</Text>
+                <TextInput
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onChangeText={onChangeDraftCwd}
+                  placeholder="/path/to/workspace"
+                  placeholderTextColor="#7b8797"
+                  style={styles.draftCwdInput}
+                  value={draftCwd}
+                />
+                {recentCwds.length ? (
+                  <View style={styles.draftCwdOptions}>
+                    {recentCwds.slice(0, 4).map((cwd) => (
+                      <Pressable key={cwd} onPress={() => onChangeDraftCwd?.(cwd)} style={styles.draftCwdOption}>
+                        <Text numberOfLines={1} style={styles.draftCwdOptionText}>
+                          {cwd.split("/").filter(Boolean).at(-1) || cwd}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
             </View>
           ) : isLoading ? (
             <View style={[styles.emptyState, { minHeight: emptyStateMinHeight }]}>
@@ -803,6 +832,44 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     textAlign: "center",
+  },
+  draftCwdPanel: {
+    gap: 8,
+    marginTop: 12,
+    maxWidth: 520,
+    width: "100%",
+  },
+  draftCwdLabel: {
+    color: "#304052",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  draftCwdInput: {
+    backgroundColor: "#ffffff",
+    borderColor: "#d8dee8",
+    borderRadius: 8,
+    borderWidth: 1,
+    color: "#182230",
+    fontSize: 13,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+  },
+  draftCwdOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  draftCwdOption: {
+    backgroundColor: "#edf1f7",
+    borderRadius: 999,
+    maxWidth: "48%",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  draftCwdOptionText: {
+    color: "#304052",
+    fontSize: 12,
+    fontWeight: "800",
   },
   inlineApproval: {
     backgroundColor: "#eaf0f7",

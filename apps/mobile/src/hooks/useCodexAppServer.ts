@@ -4,6 +4,7 @@ import type { ServerNotification } from "@codex-mobile/protocol";
 import type {
   Thread,
   ThreadReadResponse,
+  ThreadStartParams,
   ThreadStartResponse,
   ToolRequestUserInputResponse,
 } from "@codex-mobile/protocol/v2";
@@ -627,15 +628,15 @@ export function useCodexAppServer() {
 
     try {
       const permissionMode = isBuiltInPermissionModeId(selectedPermissionModeId) ? getPermissionMode(selectedPermissionModeId) : null;
-      const result = await client.request<ThreadStartResponse>("thread/start", {
+      const params: ThreadStartParams = {
         cwd: trimmedCwd,
         model: selectedModelId ?? undefined,
         approvalsReviewer: permissionMode?.approvalsReviewer,
         permissions: permissionMode ? undefined : selectedPermissionModeId,
         sandbox: permissionMode?.sandbox,
         experimentalRawEvents: false,
-        persistExtendedHistory: false,
-      });
+      };
+      const result = await client.request<ThreadStartResponse>("thread/start", params);
 
       setThreads((current) => [result.thread, ...current.filter((thread) => thread.id !== result.thread.id)]);
       setSelectedThread(result.thread);
