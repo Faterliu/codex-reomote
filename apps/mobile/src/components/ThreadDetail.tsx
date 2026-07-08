@@ -35,6 +35,7 @@ type Props = {
   isRefreshing?: boolean;
   isInterrupting?: boolean;
   isResponding?: boolean;
+  activeTurnId?: string | null;
   statusLabel?: string | null;
   hasMoreMessages?: boolean;
   approval?: PendingApproval | null;
@@ -76,6 +77,7 @@ export function ThreadDetail({
   isRefreshing = false,
   isInterrupting = false,
   isResponding = false,
+  activeTurnId = null,
   statusLabel = null,
   hasMoreMessages = false,
   approval = null,
@@ -128,47 +130,20 @@ export function ThreadDetail({
     () => prepareThreadDetailTimeline(timeline, { preserveEntryIds: [approvalEntryId, userInputEntryId] }),
     [approvalEntryId, timeline, userInputEntryId],
   );
-  const respondingTurnId = useMemo(() => {
-    if (!isResponding) {
-      return null;
-    }
-
-    for (let index = listData.length - 1; index >= 0; index -= 1) {
-      const entry = listData[index];
-      if (entry?.turnId && isActiveTimelineEntry(entry)) {
-        return entry.turnId;
-      }
-    }
-
-    return null;
-  }, [isResponding, listData]);
-  const [activeRespondingTurnId, setActiveRespondingTurnId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isResponding) {
-      setActiveRespondingTurnId(null);
-      return;
-    }
-
-    if (respondingTurnId) {
-      // 流式过程中 timeline 会重组，短暂识别不到 active entry 时继续保持当前 turn 展开。
-      setActiveRespondingTurnId(respondingTurnId);
-    }
-  }, [isResponding, respondingTurnId]);
   const activeFileChangeEntry = useMemo(() => {
-    if (!respondingTurnId) {
+    if (!activeTurnId) {
       return null;
     }
 
     for (let index = listData.length - 1; index >= 0; index -= 1) {
       const entry = listData[index];
-      if (entry?.turnId === respondingTurnId && entry.fileChanges?.length) {
+      if (entry?.turnId === activeTurnId && entry.fileChanges?.length) {
         return entry;
       }
     }
 
     return null;
-  }, [listData, respondingTurnId]);
+  }, [activeTurnId, listData]);
   const visibleListData = useMemo(
     () => (activeFileChangeEntry ? listData.filter((entry) => entry.id !== activeFileChangeEntry.id) : listData),
     [activeFileChangeEntry, listData],
@@ -319,7 +294,7 @@ export function ThreadDetail({
         approvalEntryId={approvalEntryId}
         compactFileChanges={false}
         defaultCollapseWebSearch={item.variant === "webSearchGroup" && !isResponding}
-        defaultExpandTurnProcess={Boolean(item.variant === "turnProcessGroup" && item.turnId && item.turnId === activeRespondingTurnId)}
+        defaultExpandTurnProcess={Boolean(item.variant === "turnProcessGroup" && item.turnId && item.turnId === activeTurnId)}
         entry={item}
         onOpenAttachment={setSelectedAttachment}
         onOpenAllFileChanges={setSelectedFileChanges}
@@ -340,7 +315,7 @@ export function ThreadDetail({
       downloadHostFile,
       onResolveApproval,
       onResolveUserInputRequest,
-      activeRespondingTurnId,
+      activeTurnId,
       userInputEntryId,
       userInputRequest,
       workspacePath,
@@ -610,10 +585,6 @@ export function ThreadDetail({
 
 function MessageSeparator() {
   return <View style={styles.messageSeparator} />;
-}
-
-function isActiveTimelineEntry(entry: TimelineEntry) {
-  return entry.streaming || (entry.variant === "command" && entry.commandStatus === "inProgress");
 }
 
 function ActiveFileChangeDock({ fileChanges, onOpen }: { fileChanges: TimelineFileChange[]; onOpen: () => void }) {

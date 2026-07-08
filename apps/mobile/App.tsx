@@ -83,6 +83,7 @@ export default function App() {
             style={styles.detailScreen}
           >
             <ThreadDetail
+              activeTurnId={isDraftThread ? null : codex.activeTurnId}
               approval={codex.approval}
               userInputRequest={codex.userInputRequest}
               draftCwd={draftCwd}

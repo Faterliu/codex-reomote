@@ -951,6 +951,7 @@ export function useCodexAppServer() {
     selectedModelId,
     selectedPermissionModeId,
     pickerData,
+    activeTurnId,
     isResponding: Boolean(activeTurnId) || selectedThread?.status.type === "active",
     statusLabel: activeTurnId ? "正在回复..." : getThreadStatusLabel(selectedThread),
     hasMoreMessages: Boolean(olderTurnsCursor),
