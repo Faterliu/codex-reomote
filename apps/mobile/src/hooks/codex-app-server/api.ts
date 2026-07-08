@@ -1,19 +1,32 @@
 import type {
   ModelListResponse,
+  ModelListParams,
+  PermissionProfileListParams,
   PermissionProfileListResponse,
+  PluginInstalledParams,
   PluginInstalledResponse,
   PluginSummary,
+  ReviewStartParams,
   ReviewStartResponse,
   SkillsListResponse,
+  SkillsListParams,
   Thread,
+  ThreadArchiveParams,
   ThreadListResponse,
+  ThreadListParams,
+  ThreadResumeParams,
   ThreadResumeResponse,
   ThreadSettingsUpdateParams,
   ThreadSettingsUpdateResponse,
+  ThreadSetNameParams,
+  ThreadTurnsListParams,
   ThreadTurnsListResponse,
+  ThreadUnarchiveParams,
   ThreadUnarchiveResponse,
   Turn,
+  TurnStartParams,
   TurnStartResponse,
+  TurnSteerParams,
   TurnSteerResponse,
   UserInput,
 } from "@codex-mobile/protocol/v2";
@@ -41,7 +54,7 @@ export async function resumeThreadWithInitialTurnPage(client: JsonRpcClient, thr
   }
 
   // 运行中的 thread 也需要重新 resume，app-server 会在 attach listener 后重放未决审批 request。
-  const resumed = await client.request<ThreadResumeResponse>("thread/resume", {
+  const params: ThreadResumeParams = {
     threadId: thread.id,
     excludeTurns: true,
     initialTurnsPage: {
@@ -49,8 +62,8 @@ export async function resumeThreadWithInitialTurnPage(client: JsonRpcClient, thr
       sortDirection: "desc",
       itemsView: "full",
     },
-    persistExtendedHistory: false,
-  });
+  };
+  const resumed = await client.request<ThreadResumeResponse>("thread/resume", params);
 
   return {
     thread: resumed.thread,
@@ -71,7 +84,7 @@ export async function startTurn(
 ) {
   const permissionMode = options.permissionMode && isBuiltInPermissionModeId(options.permissionMode) ? getPermissionMode(options.permissionMode) : null;
 
-  await client.request<TurnStartResponse>("turn/start", {
+  const params: TurnStartParams = {
     threadId,
     clientUserMessageId: options.clientUserMessageId,
     model: options.model ?? undefined,
@@ -79,55 +92,63 @@ export async function startTurn(
     permissions: options.permissionMode && !isBuiltInPermissionModeId(options.permissionMode) ? options.permissionMode : undefined,
     sandboxPolicy: permissionMode && options.cwd ? getPermissionModeSandboxPolicy(permissionMode.id, options.cwd) : undefined,
     input,
-  });
+  };
+  await client.request<TurnStartResponse>("turn/start", params);
 }
 
 export async function steerTurn(client: JsonRpcClient, threadId: string, turnId: string, input: UserInput[], clientUserMessageId?: string) {
-  await client.request<TurnSteerResponse>("turn/steer", {
+  const params: TurnSteerParams = {
     threadId,
     expectedTurnId: turnId,
     clientUserMessageId,
     input,
-  });
+  };
+  await client.request<TurnSteerResponse>("turn/steer", params);
 }
 
 export async function setThreadName(client: JsonRpcClient, threadId: string, name: string) {
-  await client.request("thread/name/set", { threadId, name });
+  const params: ThreadSetNameParams = { threadId, name };
+  await client.request("thread/name/set", params);
 }
 
 export async function archiveThread(client: JsonRpcClient, threadId: string) {
-  await client.request("thread/archive", { threadId });
+  const params: ThreadArchiveParams = { threadId };
+  await client.request("thread/archive", params);
 }
 
 export async function unarchiveThread(client: JsonRpcClient, threadId: string) {
-  return client.request<ThreadUnarchiveResponse>("thread/unarchive", { threadId });
+  const params: ThreadUnarchiveParams = { threadId };
+  return client.request<ThreadUnarchiveResponse>("thread/unarchive", params);
 }
 
 export async function loadThreads(client: JsonRpcClient, archived: boolean) {
-  const response = await client.request<ThreadListResponse>("thread/list", {
+  const params: ThreadListParams = {
     limit: 30,
     sortKey: "updated_at",
     sortDirection: "desc",
     archived,
-  });
+  };
+  const response = await client.request<ThreadListResponse>("thread/list", params);
 
   return response.data;
 }
 
 export async function loadModels(client: JsonRpcClient) {
-  const response = await client.request<ModelListResponse>("model/list", {
+  const params: ModelListParams = {
     limit: 50,
     includeHidden: false,
-  });
+  };
+  const response = await client.request<ModelListResponse>("model/list", params);
 
   return response.data;
 }
 
 export async function loadPermissionProfiles(client: JsonRpcClient, cwd: string | null) {
-  const response = await client.request<PermissionProfileListResponse>("permissionProfile/list", {
+  const params: PermissionProfileListParams = {
     cwd,
     limit: 50,
-  });
+  };
+  const response = await client.request<PermissionProfileListResponse>("permissionProfile/list", params);
 
   return response.data;
 }
@@ -141,18 +162,20 @@ export async function loadSkills(client: JsonRpcClient, cwd: string | null) {
     return [];
   }
 
-  const response = await client.request<SkillsListResponse>("skills/list", {
+  const params: SkillsListParams = {
     cwds: [cwd],
     forceReload: false,
-  });
+  };
+  const response = await client.request<SkillsListResponse>("skills/list", params);
 
   return response.data.flatMap((entry) => entry.skills).filter((skill) => skill.enabled);
 }
 
 export async function loadInstalledPlugins(client: JsonRpcClient, cwd: string | null) {
-  const response = await client.request<PluginInstalledResponse>("plugin/installed", {
+  const params: PluginInstalledParams = {
     cwds: cwd ? [cwd] : undefined,
-  });
+  };
+  const response = await client.request<PluginInstalledResponse>("plugin/installed", params);
 
   const plugins = response.marketplaces.flatMap((marketplace) => marketplace.plugins).filter((plugin) => plugin.installed && plugin.enabled);
   return dedupePlugins(plugins);
@@ -172,22 +195,24 @@ function dedupePlugins(plugins: PluginSummary[]) {
 }
 
 export async function startReview(client: JsonRpcClient, threadId: string) {
-  return client.request<ReviewStartResponse>("review/start", {
+  const params: ReviewStartParams = {
     threadId,
     delivery: "inline",
     target: { type: "uncommittedChanges" },
-  });
+  };
+  return client.request<ReviewStartResponse>("review/start", params);
 }
 
 export async function loadTurnPage(client: JsonRpcClient, threadId: string, cursor: string | null) {
   // 当前 app-server 已支持 turn 分页，但 items 单独分页接口还未实现，所以这里直接取 full。
-  const turnsResponse = await client.request<ThreadTurnsListResponse>("thread/turns/list", {
+  const params: ThreadTurnsListParams = {
     threadId,
     cursor,
     limit: DETAIL_TURN_PAGE_SIZE,
     sortDirection: "desc",
     itemsView: "full",
-  });
+  };
+  const turnsResponse = await client.request<ThreadTurnsListResponse>("thread/turns/list", params);
 
   return {
     turns: [...turnsResponse.data].reverse(),
