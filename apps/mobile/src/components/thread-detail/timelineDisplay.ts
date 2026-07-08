@@ -166,12 +166,13 @@ function groupWebSearchEntriesInTurn(entries: TimelineEntry[], options: Options)
 function groupCompletedTurnProcessEntries(entries: TimelineEntry[], options: Options) {
   const finalAssistantIndex = findFinalAssistantIndex(entries);
   const anchorIndex = finalAssistantIndex === -1 ? findStreamingAssistantIndex(entries) : finalAssistantIndex;
+  const hasStreamingAnswerAnchor = finalAssistantIndex === -1 && anchorIndex !== -1;
 
   if (anchorIndex === -1) {
     return entries;
   }
 
-  const processEntries = entries.filter((entry, index) => index !== anchorIndex && isCollapsibleProcessEntry(entry, options));
+  const processEntries = entries.filter((entry, index) => index !== anchorIndex && isCollapsibleProcessEntry(entry, options, hasStreamingAnswerAnchor));
 
   if (processEntries.length === 0) {
     return entries;
@@ -201,13 +202,18 @@ function groupCompletedTurnProcessEntries(entries: TimelineEntry[], options: Opt
   return output;
 }
 
-function isCollapsibleProcessEntry(entry: TimelineEntry, options: Options) {
+function isCollapsibleProcessEntry(entry: TimelineEntry, options: Options, includeActiveEntries = false) {
   if (entry.role === "user") {
     return false;
   }
 
   if (hasPreservedEntry([entry], options)) {
     return false;
+  }
+
+  if (includeActiveEntries) {
+    // 回复进行中时，过程项要全部收进展开组里，只把正在生成的最终回答留在外面。
+    return entry.role === "assistant" || entry.role === "tool" || entry.role === "system";
   }
 
   if (entry.pending || entry.failed || entry.streaming) {

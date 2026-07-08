@@ -197,8 +197,9 @@ const inProgressTurnWithFileChange = prepareThreadDetailTimeline([
     streaming: true,
   },
 ]);
-inProgressTurnWithFileChange.find((entry) => entry.fileChanges?.length)?.title satisfies string | undefined;
-inProgressTurnWithFileChange.at(-1)?.fileChanges?.[0]?.path satisfies string | undefined;
+const inProgressFileChangeProcessGroup = inProgressTurnWithFileChange.find(isTurnProcessGroup);
+inProgressFileChangeProcessGroup?.processEntries?.find((entry) => entry.fileChanges?.length)?.title satisfies string | undefined;
+inProgressTurnWithFileChange.at(-1)?.title satisfies string | undefined;
 
 const inProgressTurnWithCompletedCommands = prepareThreadDetailTimeline([
   {
@@ -238,6 +239,37 @@ const inProgressTurnWithCompletedCommands = prepareThreadDetailTimeline([
   },
 ]);
 inProgressTurnWithCompletedCommands.find(isTurnProcessGroup)?.processEntries?.find(isCommandGroup)?.commandEntries?.[0]?.commandText satisfies
+  | string
+  | undefined;
+
+const inProgressTurnWithRunningCommand = prepareThreadDetailTimeline([
+  {
+    id: "turn-7:user",
+    turnId: "turn-7",
+    role: "user",
+    title: "You",
+    body: "跑命令中",
+  },
+  {
+    id: "turn-7:cmd-1",
+    turnId: "turn-7",
+    role: "tool",
+    variant: "command",
+    title: "正在运行 pnpm typecheck",
+    body: "",
+    commandText: "pnpm typecheck",
+    commandStatus: "inProgress",
+  },
+  {
+    id: "turn-7:assistant-streaming",
+    turnId: "turn-7",
+    role: "assistant",
+    title: "Codex",
+    body: "继续回复中",
+    streaming: true,
+  },
+]);
+inProgressTurnWithRunningCommand.find(isTurnProcessGroup)?.processEntries?.find((entry) => entry.commandStatus === "inProgress")?.commandText satisfies
   | string
   | undefined;
 

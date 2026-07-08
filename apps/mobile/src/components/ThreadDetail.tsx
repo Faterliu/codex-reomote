@@ -136,6 +136,19 @@ export function ThreadDetail({
 
     return null;
   }, [isResponding, listData]);
+  const [activeRespondingTurnId, setActiveRespondingTurnId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isResponding) {
+      setActiveRespondingTurnId(null);
+      return;
+    }
+
+    if (respondingTurnId) {
+      // 流式过程中 timeline 会重组，短暂识别不到 active entry 时继续保持当前 turn 展开。
+      setActiveRespondingTurnId(respondingTurnId);
+    }
+  }, [isResponding, respondingTurnId]);
   const activeFileChangeEntry = useMemo(() => {
     if (!respondingTurnId) {
       return null;
@@ -300,7 +313,7 @@ export function ThreadDetail({
         approvalEntryId={approvalEntryId}
         compactFileChanges={false}
         defaultCollapseWebSearch={item.variant === "webSearchGroup" && !isResponding}
-        defaultExpandTurnProcess={Boolean(item.variant === "turnProcessGroup" && item.turnId && item.turnId === respondingTurnId)}
+        defaultExpandTurnProcess={Boolean(item.variant === "turnProcessGroup" && item.turnId && item.turnId === activeRespondingTurnId)}
         entry={item}
         onOpenAttachment={setSelectedAttachment}
         onOpenAllFileChanges={setSelectedFileChanges}
@@ -321,7 +334,7 @@ export function ThreadDetail({
       downloadHostFile,
       onResolveApproval,
       onResolveUserInputRequest,
-      respondingTurnId,
+      activeRespondingTurnId,
       userInputEntryId,
       userInputRequest,
       workspacePath,
