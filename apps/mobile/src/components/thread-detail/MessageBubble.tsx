@@ -1,6 +1,6 @@
 import type { ToolRequestUserInputResponse } from "@codex-mobile/protocol/v2";
 import { Ionicons } from "@expo/vector-icons";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import Markdown from "react-native-markdown-display";
@@ -70,6 +70,7 @@ export const MessageBubble = memo(function MessageBubble({
   const isTurnProcessGroup = entry.variant === "turnProcessGroup";
   const [webSearchExpanded, setWebSearchExpanded] = useState(!defaultCollapseWebSearch);
   const [turnProcessExpanded, setTurnProcessExpanded] = useState(defaultExpandTurnProcess);
+  const previousTurnProcessEntryIdRef = useRef(entry.id);
   const isToolCard = entry.role === "tool" && (isFileChange || isCommandGroup || isWebSearchGroup || isTurnProcessGroup);
   const canCopy = entry.role === "user" && Boolean(entry.body.trim());
   const shouldRenderMarkdown = entry.role === "assistant" && entry.title === "Codex";
@@ -92,10 +93,21 @@ export const MessageBubble = memo(function MessageBubble({
   }, [defaultCollapseWebSearch, isWebSearchGroup]);
 
   useEffect(() => {
-    if (isTurnProcessGroup) {
-      setTurnProcessExpanded(defaultExpandTurnProcess);
+    if (!isTurnProcessGroup) {
+      return;
     }
-  }, [defaultExpandTurnProcess, isTurnProcessGroup]);
+
+    if (previousTurnProcessEntryIdRef.current !== entry.id) {
+      previousTurnProcessEntryIdRef.current = entry.id;
+      setTurnProcessExpanded(defaultExpandTurnProcess);
+      return;
+    }
+
+    if (defaultExpandTurnProcess) {
+      // 流式回复时 respondingTurnId 可能短暂抖动；默认值只负责打开，避免消息组被反复收起。
+      setTurnProcessExpanded(true);
+    }
+  }, [defaultExpandTurnProcess, entry.id, isTurnProcessGroup]);
 
   const copyMessage = async () => {
     if (!canCopy) {
