@@ -21,6 +21,7 @@
     "start:lan": "node scripts/start-lan-stack.mjs",
     "start:lan:daemon": "USE_DAEMON_APP_SERVER=1 node scripts/start-lan-stack.mjs",
     "start:cloudflare": "node scripts/start-cloudflare-stack.mjs",
+    "start:shared": "node scripts/start-shared-stack.mjs",
     "typecheck": "pnpm --filter mobile typecheck",
     "test:scripts": "node --test scripts/*.test.mjs",
     "protocol:generate": "codex app-server generate-ts --out packages/protocol/src --experimental"

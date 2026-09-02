@@ -1,5 +1,7 @@
 # Codex Mobile Remote
 
+原作者：https://github.com/vjzning/app-codexapp
+
 Codex App Server 移动端客户端。它把手机 App 当作一个 Codex UI surface，连接你显式启动的 `codex app-server`，用于查看会话、继续发送消息、接收事件和处理审批。
 
 ## 预览
@@ -100,6 +102,33 @@ PUBLIC_CODEX_MOBILE_URL=wss://your-domain.example.com pnpm start:cloudflare
 - 终端二维码：手机 App 扫码后自动填入公网 URL 和 relay token
 
 公网只暴露 relay，不要直接暴露裸 `4500`。详细配置见 [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md)。
+
+### 电脑端与手机共用同一 App Server
+
+如果希望手机能可靠回答电脑端已启动任务的计划模式询问，需要让电脑端和手机连接**同一个** app-server，避免两个独立 App Server 竞争同一 thread 的写入权（报 `already has an active writer`）。
+
+```bash
+pnpm start:shared
+```
+
+这个命令会：
+
+- 复用 `127.0.0.1:4500` 上已有的 app-server；若没有就启动一个（`--ws-auth capability-token`）。
+- 启动本地 relay（`4501` → `4500`），手机扫码即可连接。
+- 打印电脑端接入命令，电脑端改用 CLI 接入同一 app-server，**不要**再开 Codex Desktop App：
+
+```powershell
+$env:CODEX_REMOTE_TOKEN = (Get-Content "$env:USERPROFILE\.codex\app-server\mobile.token" -Raw).Trim()
+codex --remote ws://127.0.0.1:4500 --remote-auth-token-env CODEX_REMOTE_TOKEN
+```
+
+外网场景设置 `PUBLIC_CODEX_MOBILE_URL` 即进入 Cloudflare 模式（relay 只监听 `127.0.0.1` 并启动 `cloudflared`）：
+
+```bash
+PUBLIC_CODEX_MOBILE_URL=wss://your-domain.example.com pnpm start:shared
+```
+
+注意：此方案不保留 Codex Desktop App 原生 GUI，电脑端操作在终端 CLI 里完成；手机端能否回答电脑端任务在计划模式下发起的询问，仍需真机联调验证（依赖手机端已有的强制 `thread/resume` 重新附加逻辑）。
 
 ## 手动调试
 

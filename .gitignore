@@ -1,6 +1,7 @@
 # 依赖目录不要进入仓库，安装时用 pnpm 还原。
 node_modules/
 apps/*/node_modules/
+.pnpm-store/
 
 # Expo / Metro 本地缓存。
 .expo/
