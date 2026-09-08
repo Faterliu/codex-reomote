@@ -8,6 +8,7 @@ apps/*/node_modules/
 apps/*/.expo/
 dist/
 web-build/
+.deep-copilot
 
 # 本地环境和系统文件。
 .env

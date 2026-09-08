@@ -3,6 +3,11 @@
 原作者：https://github.com/vjzning/app-codexapp
 
 Codex App Server 移动端客户端。它把手机 App 当作一个 Codex UI surface，连接你显式启动的 `codex app-server`，用于查看会话、继续发送消息、接收事件和处理审批。
+启动
+powershell -ExecutionPolicy Bypass -File C:\file\app-codexapp\scripts\start-phone-tunnel.ps1
+
+重启
+powershell -ExecutionPolicy Bypass -File C:\file\app-codexapp\scripts\restart-phone-tunnel.ps1
 
 ## 预览
 
