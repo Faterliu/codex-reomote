@@ -98,8 +98,10 @@ export default function App() {
               models={codex.pickerData.models}
               permissionProfiles={codex.pickerData.permissionProfiles}
               plugins={codex.pickerData.plugins}
+              rateLimits={codex.rateLimits}
               recentCwds={codex.recentCwds}
               selectedModelId={codex.selectedModelId}
+              selectedReasoningEffort={codex.selectedReasoningEffort}
               selectedPermissionModeId={codex.selectedPermissionModeId}
               statusLabel={isDraftThread ? "新会话" : codex.statusLabel}
               skills={codex.pickerData.skills}
@@ -118,6 +120,7 @@ export default function App() {
               onResolveUserInputRequest={codex.resolveUserInputRequest}
               onRunShellCommand={codex.runShellCommand}
               onSelectModel={codex.setSelectedModelId}
+              onSelectReasoningEffort={codex.setSelectedReasoningEffort}
               onSelectPermissionMode={codex.setSelectedPermissionModeId}
               onSend={isDraftThread ? sendDraftMessage : codex.sendMessage}
               thread={codex.selectedThread}

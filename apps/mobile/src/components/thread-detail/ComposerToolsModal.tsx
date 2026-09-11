@@ -3,8 +3,10 @@ import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "r
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 
-import type { Model, PermissionProfileSummary, PluginSummary, SkillMetadata } from "@codex-mobile/protocol/v2";
+import type { GetAccountRateLimitsResponse, Model, PermissionProfileSummary, PluginSummary, SkillMetadata } from "@codex-mobile/protocol/v2";
 
+import { buildRateLimitsDisplay, type RateLimitDisplayItem, type RateLimitsDisplay } from "@/lib/rateLimitFormat";
+import { getSupportedReasoningEfforts } from "@/lib/reasoningEffort";
 import type { ComposerMention } from "@/types/composer";
 import { PERMISSION_MODES, isBuiltInPermissionModeId, type PermissionModeId } from "@/types/permissionMode";
 
@@ -13,7 +15,9 @@ type Props = {
   models: Model[];
   permissionProfiles: PermissionProfileSummary[];
   plugins: PluginSummary[];
+  rateLimits?: GetAccountRateLimitsResponse | null;
   selectedModelId: string | null;
+  selectedReasoningEffort: string | null;
   selectedPermissionModeId: PermissionModeId;
   skills: SkillMetadata[];
   visible: boolean;
@@ -23,12 +27,16 @@ type Props = {
   onRunCommand: () => void;
   onSelectMention: (mention: ComposerMention) => void;
   onSelectModel: (modelId: string) => void;
+  onSelectReasoningEffort: (effort: string) => void;
   onSelectPermissionMode: (modeId: PermissionModeId) => void;
 };
 
 type ToolListItem =
   | { type: "quick" }
   | { type: "models" }
+  | { type: "reasoning" }
+  | { type: "rateLimitHeader"; display: RateLimitsDisplay }
+  | { type: "rateLimit"; bucket: RateLimitDisplayItem }
   | { type: "permissionModes" }
   | { type: "section"; id: string; title: string }
   | { type: "skill"; skill: SkillMetadata }
@@ -40,7 +48,9 @@ export function ComposerToolsModal({
   models,
   permissionProfiles,
   plugins,
+  rateLimits = null,
   selectedModelId,
+  selectedReasoningEffort,
   selectedPermissionModeId,
   skills,
   visible,
@@ -50,6 +60,7 @@ export function ComposerToolsModal({
   onRunCommand,
   onSelectMention,
   onSelectModel,
+  onSelectReasoningEffort,
   onSelectPermissionMode,
 }: Props) {
   const [activePluginId, setActivePluginId] = useState<string | null>(null);
@@ -57,14 +68,39 @@ export function ComposerToolsModal({
   const sheetHeight = Math.min(640, Math.max(360, windowHeight * 0.78));
   const listHeight = sheetHeight - 58;
 
+  // 额度只在拉到快照后展示，避免加载中闪出「暂无额度数据」。
+  const rateLimitsDisplay = useMemo(() => buildRateLimitsDisplay(rateLimits), [rateLimits]);
+  const rateLimitSignature = useMemo(() => {
+    if (!rateLimitsDisplay) {
+      return "";
+    }
+
+    const itemKey = rateLimitsDisplay.items.map((item) => item.key).join("|");
+
+    return `${rateLimitsDisplay.planLabel ?? ""}#${rateLimitsDisplay.resetCreditsLabel ?? ""}#${itemKey}`;
+  }, [rateLimitsDisplay]);
+
   const data = useMemo<ToolListItem[]>(() => {
     const items: ToolListItem[] = [
       { type: "quick" },
       { type: "section", id: "models-title", title: "模型" },
       { type: "models" },
+      { type: "section", id: "reasoning-title", title: "思考程度" },
+      { type: "reasoning" },
       { type: "section", id: "permissions-title", title: "权限模式" },
       { type: "permissionModes" },
     ];
+
+    if (rateLimitsDisplay) {
+      items.push({ type: "section", id: "rate-limits-title", title: "额度" });
+
+      if (rateLimitsDisplay.items.length) {
+        items.push({ type: "rateLimitHeader", display: rateLimitsDisplay });
+        items.push(...rateLimitsDisplay.items.map((bucket) => ({ type: "rateLimit" as const, bucket })));
+      } else {
+        items.push({ type: "empty", id: "rate-limits-empty", text: "暂无额度数据" });
+      }
+    }
 
     items.push({ type: "section", id: "skills-title", title: "Skills" });
     if (skills.length) {
@@ -81,7 +117,7 @@ export function ComposerToolsModal({
     }
 
     return items;
-  }, [plugins, skills]);
+  }, [plugins, skills, rateLimitsDisplay]);
 
   const visiblePermissionProfiles = useMemo(
     () => permissionProfiles.filter((profile) => !isBuiltInPermissionModeId(profile.id)),
@@ -128,6 +164,19 @@ export function ComposerToolsModal({
               )}
             </View>
           );
+        case "reasoning": {
+          const model = models.find((candidate) => candidate.model === selectedModelId);
+          const effortOptions = getSupportedReasoningEfforts(model ?? null);
+          return (
+            <View style={styles.modelWrap}>
+              {effortOptions.length ? effortOptions.map((option) => (
+                <Pressable key={option.id} onPress={() => onSelectReasoningEffort(option.id)} style={[styles.modelPill, selectedReasoningEffort === option.id && styles.modelPillActive]}>
+                  <Text style={[styles.modelText, selectedReasoningEffort === option.id && styles.modelTextActive]}>{option.label}</Text>
+                </Pressable>
+              )) : <Text style={styles.emptyText}>当前模型不支持选择思考程度</Text>}
+            </View>
+          );
+        }
         case "permissionModes":
           return (
             <View style={styles.permissionWrap}>
@@ -159,6 +208,42 @@ export function ComposerToolsModal({
                   <Text style={styles.actionText}>{profile.id}</Text>
                 </Pressable>
               ))}
+            </View>
+          );
+        case "rateLimitHeader":
+          return (
+            <View style={styles.rateLimitMetaRow}>
+              {item.display.planLabel ? (
+                <View style={styles.rateLimitBadge}>
+                  <Text style={styles.rateLimitBadgeText}>{item.display.planLabel}</Text>
+                </View>
+              ) : null}
+              {item.display.resetCreditsLabel ? <Text style={styles.rateLimitMetaText}>{item.display.resetCreditsLabel}</Text> : null}
+              <Text style={styles.rateLimitMetaText}>点击右侧刷新更新</Text>
+            </View>
+          );
+        case "rateLimit":
+          return (
+            <View style={styles.rateLimitCard}>
+              <View style={styles.rateLimitHead}>
+                <Text numberOfLines={1} style={styles.actionTitle}>
+                  {item.bucket.title}
+                </Text>
+                {item.bucket.depleted ? (
+                  <View style={styles.rateLimitDepletedBadge}>
+                    <Text style={styles.rateLimitDepletedText}>已达上限</Text>
+                  </View>
+                ) : null}
+                <Text style={[styles.rateLimitPercent, item.bucket.depleted && styles.rateLimitPercentDanger]}>
+                  {item.bucket.unlimited ? "不限" : formatRemainingPercent(item.bucket.primary, item.bucket.secondary)}
+                </Text>
+              </View>
+              {item.bucket.primary ? <Text style={styles.actionText}>剩余 {formatWindowLine(item.bucket.primary)}</Text> : null}
+              {item.bucket.secondary ? <Text style={styles.actionText}>剩余 {formatWindowLine(item.bucket.secondary)}</Text> : null}
+              {item.bucket.creditsLabel ? <Text style={styles.actionText}>{item.bucket.creditsLabel}</Text> : null}
+              {!item.bucket.primary && !item.bucket.secondary && !item.bucket.creditsLabel ? (
+                <Text style={styles.emptyText}>暂无该额度窗口数据</Text>
+              ) : null}
             </View>
           );
         case "section":
@@ -202,8 +287,11 @@ export function ComposerToolsModal({
       onRunCommand,
       onSelectMention,
       onSelectModel,
+      onSelectReasoningEffort,
       onSelectPermissionMode,
+      rateLimitSignature,
       selectedModelId,
+      selectedReasoningEffort,
       selectedPermissionModeId,
       visiblePermissionProfiles,
     ],
@@ -244,6 +332,12 @@ function keyExtractor(item: ToolListItem) {
       return "quick";
     case "models":
       return "models";
+    case "reasoning":
+      return "reasoning";
+    case "rateLimitHeader":
+      return `rate-limits-header:${rateLimitSignature(item.display)}`;
+    case "rateLimit":
+      return `rate-limit:${item.bucket.key}`;
     case "permissionModes":
       return "permissionModes";
     case "section":
@@ -259,6 +353,31 @@ function keyExtractor(item: ToolListItem) {
 
 function ToolItemSeparator() {
   return <View style={styles.separator} />;
+}
+
+// 双窗口时主行只展示最紧的那个窗口，明细在下一行分别展开。
+function formatRemainingPercent(
+  primary: RateLimitDisplayItem["primary"],
+  secondary: RateLimitDisplayItem["secondary"],
+) {
+  const windows = [primary, secondary].filter((window): window is NonNullable<typeof window> => Boolean(window));
+
+  if (!windows.length) {
+    return "—";
+  }
+
+  return `${Math.min(...windows.map((window) => window.remainingPercent))}%`;
+}
+
+function formatWindowLine(window: NonNullable<RateLimitDisplayItem["primary"]>) {
+  const percentText = `${window.remainingPercent}%`;
+  const details = [window.periodLabel, window.resetLabel].filter((part): part is string => Boolean(part));
+
+  return details.length ? `${percentText} · ${details.join(" · ")}` : percentText;
+}
+
+function rateLimitSignature(display: RateLimitsDisplay) {
+  return `${display.planLabel ?? ""}#${display.resetCreditsLabel ?? ""}`;
 }
 
 const styles = StyleSheet.create({
@@ -430,6 +549,61 @@ const styles = StyleSheet.create({
   },
   permissionTitleActive: {
     color: "#2454d6",
+  },
+  rateLimitMetaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  rateLimitBadge: {
+    backgroundColor: "#e8eef8",
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  rateLimitBadgeText: {
+    color: "#2454d6",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  rateLimitMetaText: {
+    color: "#6b7788",
+    fontSize: 12,
+  },
+  rateLimitCard: {
+    backgroundColor: "#f4f7fb",
+    borderColor: "#d8dee8",
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  rateLimitHead: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "space-between",
+  },
+  rateLimitPercent: {
+    color: "#2454d6",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  rateLimitPercentDanger: {
+    color: "#b42318",
+  },
+  rateLimitDepletedBadge: {
+    backgroundColor: "#fdecec",
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  rateLimitDepletedText: {
+    color: "#b42318",
+    fontSize: 11,
+    fontWeight: "900",
   },
   emptyText: {
     color: "#6b7788",

@@ -62,6 +62,24 @@ cd android
 
 产物位于 `C:\a\apps\mobile\android\app\build\outputs\apk\release\app-release.apk`。
 
+## 当前链路配置（2026-09-11）
+
+本机：
+
+- App Server 监听 `127.0.0.1:4500`，Relay 监听 `127.0.0.1:4501`。
+- SSH 反向隧道连接 `root@8.148.73.94`，把服务器 `127.0.0.1:4501` 转到本机 Relay。
+- token 保存在 `%USERPROFILE%\.codex\app-server\`，禁止写入仓库或文档。
+- `start-phone-tunnel.bat` 隐藏启动，并每 60 秒检查链路；连续失败 2 次后自动修复。
+- `restart-phone-tunnel.bat` 仅重启 App Server，用于处理 `active writer` 等状态残留。
+- `stop-phone-tunnel.bat` 停止本机监控器、App Server、Relay 和反向隧道，不停止服务器进程。
+
+远程服务器：
+
+- 当前运行 1 个 Quick Tunnel：`cloudflared tunnel --url http://127.0.0.1:4501`。
+- `127.0.0.1:4501/readyz` 状态为 `ok`。
+- 当前公网地址为 `https://front-imagine-patents-differential.trycloudflare.com`；Quick Tunnel 进程重建后地址可能变化。
+- 默认不对服务器配置进行任何修改，除非用户明确要求。
+
 ## App Server / Relay 约定
 
 - 本机 `codex app-server` 优先监听 `ws://127.0.0.1:4500`。

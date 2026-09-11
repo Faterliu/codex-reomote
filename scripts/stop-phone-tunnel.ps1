@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     停止本机手机链路的监控器、App Server、Relay 和 SSH 反向隧道。
 

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     手动重启本机 Codex App Server（供 app-codexapp / phone tunnel 使用）。
 

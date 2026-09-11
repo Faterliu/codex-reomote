@@ -29,6 +29,7 @@ import type {
   TurnSteerParams,
   TurnSteerResponse,
   UserInput,
+  GetAccountRateLimitsResponse,
 } from "@codex-mobile/protocol/v2";
 
 import { JsonRpcClient } from "@/lib/jsonRpcClient";
@@ -45,11 +46,19 @@ export async function ensureThreadResumed(client: JsonRpcClient, thread: Thread)
   return resumed.thread;
 }
 
-export async function resumeThreadWithInitialTurnPage(client: JsonRpcClient, thread: Thread, options: { force?: boolean } = {}) {
-  if (!options.force && thread.status.type !== "notLoaded") {
+export async function resumeThreadWithInitialTurnPage(
+  client: JsonRpcClient,
+  thread: Thread,
+  options: { force?: boolean; requireThreadSettings?: boolean } = {},
+) {
+  // 未真正走 thread/resume 时拿不到 thread 级设置。发送消息等调用方保留当前值即可，
+  // 但打开会话必须拿权威设置，否则会把上一个会话的模型/思考程度带过来。
+  if (!options.force && !options.requireThreadSettings && thread.status.type !== "notLoaded") {
     return {
       thread,
       initialTurnsPage: null,
+      model: undefined,
+      reasoningEffort: undefined,
     };
   }
 
@@ -67,6 +76,9 @@ export async function resumeThreadWithInitialTurnPage(client: JsonRpcClient, thr
 
   return {
     thread: resumed.thread,
+    // thread 级 model / reasoningEffort 只由 thread/resume 返回，用于回填移动端的模型与「思考程度」。
+    model: resumed.model,
+    reasoningEffort: resumed.reasoningEffort,
     initialTurnsPage: resumed.initialTurnsPage
       ? {
           turns: [...resumed.initialTurnsPage.data].reverse(),
@@ -80,7 +92,7 @@ export async function startTurn(
   client: JsonRpcClient,
   threadId: string,
   input: UserInput[],
-  options: { clientUserMessageId?: string; cwd?: string; model?: string | null; permissionMode?: PermissionModeId } = {},
+  options: { clientUserMessageId?: string; cwd?: string; model?: string | null; effort?: string | null; permissionMode?: PermissionModeId } = {},
 ) {
   const permissionMode = options.permissionMode && isBuiltInPermissionModeId(options.permissionMode) ? getPermissionMode(options.permissionMode) : null;
 
@@ -88,6 +100,7 @@ export async function startTurn(
     threadId,
     clientUserMessageId: options.clientUserMessageId,
     model: options.model ?? undefined,
+    effort: options.effort ?? undefined,
     approvalsReviewer: permissionMode?.approvalsReviewer,
     permissions: options.permissionMode && !isBuiltInPermissionModeId(options.permissionMode) ? options.permissionMode : undefined,
     sandboxPolicy: permissionMode && options.cwd ? getPermissionModeSandboxPolicy(permissionMode.id, options.cwd) : undefined,
@@ -162,6 +175,10 @@ export async function loadModels(client: JsonRpcClient) {
   const response = await client.request<ModelListResponse>("model/list", params);
 
   return response.data;
+}
+
+export async function loadAccountRateLimits(client: JsonRpcClient) {
+  return client.request<GetAccountRateLimitsResponse>("account/rateLimits/read", undefined);
 }
 
 export async function loadPermissionProfiles(client: JsonRpcClient, cwd: string | null) {

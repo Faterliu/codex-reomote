@@ -5,10 +5,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 
-import type { Model, PermissionProfileSummary, PluginSummary, SkillMetadata, Thread } from "@codex-mobile/protocol/v2";
+import type { GetAccountRateLimitsResponse, Model, PermissionProfileSummary, PluginSummary, SkillMetadata, Thread } from "@codex-mobile/protocol/v2";
 import type { ToolRequestUserInputResponse } from "@codex-mobile/protocol/v2";
 
 import type { TimelineAttachment, TimelineEntry, TimelineFileChange } from "@/lib/threadFormat";
+import { getReasoningEffortLabel } from "@/lib/reasoningEffort";
 import { threadProjectLabel, threadTitle } from "@/lib/threadFormat";
 import { ApprovalCard } from "@/components/approval/ApprovalCard";
 import { getApprovalTimelineEntryId, type ApprovalDecision } from "@/components/approval/approvalFormat";
@@ -45,7 +46,9 @@ type Props = {
   models?: Model[];
   permissionProfiles?: PermissionProfileSummary[];
   plugins?: PluginSummary[];
+  rateLimits?: GetAccountRateLimitsResponse | null;
   selectedModelId?: string | null;
+  selectedReasoningEffort?: string | null;
   selectedPermissionModeId?: PermissionModeId;
   skills?: SkillMetadata[];
   onBack: () => void;
@@ -58,6 +61,7 @@ type Props = {
   onRenameThread?: (name: string) => void | Promise<void>;
   onReviewThread?: () => void | Promise<void>;
   onSelectModel?: (modelId: string) => void;
+  onSelectReasoningEffort?: (effort: string) => void;
   onSelectPermissionMode?: (modeId: PermissionModeId) => void;
   onSend: (text: string, mentions?: ComposerMention[], images?: ComposerImageAttachment[]) => void | Promise<void>;
   onRunShellCommand?: (command: string) => void | Promise<void>;
@@ -87,7 +91,9 @@ export function ThreadDetail({
   models = [],
   permissionProfiles = [],
   plugins = [],
+  rateLimits = null,
   selectedModelId = null,
+  selectedReasoningEffort = null,
   selectedPermissionModeId = "standard",
   skills = [],
   onBack,
@@ -100,6 +106,7 @@ export function ThreadDetail({
   onRenameThread,
   onReviewThread,
   onSelectModel,
+  onSelectReasoningEffort,
   onSelectPermissionMode,
   onSend,
   onRunShellCommand,
@@ -277,6 +284,7 @@ export function ThreadDetail({
   }, [onDownloadHostFile]);
 
   const selectedModelLabel = models.find((model) => model.model === selectedModelId)?.displayName ?? selectedModelId;
+  const selectedReasoningEffortLabel = getReasoningEffortLabel(selectedReasoningEffort);
   const selectedPermissionModeLabel = getPermissionModeLabel(selectedPermissionModeId, permissionProfiles);
   const selectedPermissionModeIsFull = isBuiltInPermissionModeId(selectedPermissionModeId) && selectedPermissionModeId === "full";
   const shouldSteer = isResponding && (message.trim().length > 0 || imageAttachments.length > 0);
@@ -473,14 +481,20 @@ export function ThreadDetail({
           onSelectModel?.(modelId);
           setToolsVisible(false);
         }}
+        onSelectReasoningEffort={(effort) => {
+          onSelectReasoningEffort?.(effort);
+          setToolsVisible(false);
+        }}
         onSelectPermissionMode={(modeId) => {
           onSelectPermissionMode?.(modeId);
           setToolsVisible(false);
         }}
         selectedModelId={selectedModelId}
+        selectedReasoningEffort={selectedReasoningEffort}
         selectedPermissionModeId={selectedPermissionModeId}
         permissionProfiles={permissionProfiles}
         plugins={plugins}
+        rateLimits={rateLimits}
         skills={skills}
         visible={toolsVisible}
       />
@@ -509,11 +523,16 @@ export function ThreadDetail({
         />
       ) : null}
       <View style={styles.composerShell}>
-        {selectedModelLabel || selectedPermissionModeLabel || mentions.length ? (
+        {selectedModelLabel || selectedReasoningEffortLabel || selectedPermissionModeLabel || mentions.length ? (
           <View style={styles.composerMeta}>
             {selectedModelLabel ? (
               <View style={styles.composerMetaChip}>
                 <Text style={styles.composerMetaText}>模型 {selectedModelLabel}</Text>
+              </View>
+            ) : null}
+            {selectedReasoningEffortLabel ? (
+              <View style={styles.composerMetaChip}>
+                <Text style={styles.composerMetaText}>思考 {selectedReasoningEffortLabel}</Text>
               </View>
             ) : null}
             {selectedPermissionModeLabel ? (

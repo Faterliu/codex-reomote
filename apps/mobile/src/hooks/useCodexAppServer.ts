@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "rea
 
 import type { ServerNotification } from "@codex-mobile/protocol";
 import type {
+  GetAccountRateLimitsResponse,
   Thread,
   ThreadReadResponse,
   ThreadStartParams,
@@ -10,6 +11,7 @@ import type {
 } from "@codex-mobile/protocol/v2";
 
 import { JsonRpcClient } from "@/lib/jsonRpcClient";
+import { mergeRateLimits } from "@/lib/rateLimitFormat";
 import { flattenTurns, timelineEntryFromCommandApproval, type TimelineEntry } from "@/lib/threadFormat";
 import type { ConnectionState, JsonRpcIncoming, PendingApproval, PendingUserInputRequest, ReadinessStatus } from "@/types/codex";
 import type { ComposerImageAttachment, ComposerMention } from "@/types/composer";
@@ -29,6 +31,7 @@ import {
   formatReadinessLog,
   getInProgressTurnId,
   loadInstalledPlugins,
+  loadAccountRateLimits,
   loadModels,
   loadPermissionProfiles,
   loadSkills,
@@ -88,7 +91,9 @@ export function useCodexAppServer() {
   const [olderTurnsCursor, setOlderTurnsCursor] = useState<string | null>(null);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [selectedReasoningEffort, setSelectedReasoningEffort] = useState<string | null>(null);
   const [selectedPermissionModeId, setSelectedPermissionModeId] = useState<PermissionModeId>(DEFAULT_PERMISSION_MODE_ID);
+  const [rateLimits, setRateLimits] = useState<GetAccountRateLimitsResponse | null>(null);
   const [pickerData, setPickerData] = useState<PickerData>({
     models: [],
     permissionProfiles: [],
@@ -128,6 +133,7 @@ export function useCodexAppServer() {
       },
       onNotification: (message) => {
         syncThreadSettingsNotification(message);
+        syncRateLimitNotification(message);
         handleNotification(message, {
           setThreads,
           setSelectedThread,
@@ -169,7 +175,18 @@ export function useCodexAppServer() {
     }
 
     setSelectedModelId(notification.params.threadSettings.model);
+    setSelectedReasoningEffort(notification.params.threadSettings.effort);
     setSelectedPermissionModeId(permissionModeFromThreadSettings(notification.params.threadSettings));
+  };
+
+  const syncRateLimitNotification = (message: JsonRpcIncoming) => {
+    if (!("method" in message) || message.method !== "account/rateLimits/updated") {
+      return;
+    }
+
+    const notification = message as Extract<ServerNotification, { method: "account/rateLimits/updated" }>;
+    // 滚动推送是稀疏快照，只合并有值的字段，缺失字段不能清掉已有数据。
+    setRateLimits((current) => mergeRateLimits(current, notification.params.rateLimits));
   };
 
   const visibleTimeline = useMemo(
@@ -381,6 +398,10 @@ export function useCodexAppServer() {
         return;
       }
       const resumedThread = resumed.thread;
+      // resume 未返回 effort（未真正 resume 的分支）时保留当前选择，避免被清空。
+      if (resumed.reasoningEffort !== undefined) {
+        setSelectedReasoningEffort(resumed.reasoningEffort);
+      }
       setSelectedThread(resumedThread);
       const page = resumed.initialTurnsPage ?? (await loadTurnPage(client, resumedThread.id, null));
       if (selectedThreadIdRef.current !== thread.id) {
@@ -409,6 +430,9 @@ export function useCodexAppServer() {
       }
 
       const resumedThread = resumed.thread;
+      if (resumed.reasoningEffort !== undefined) {
+        setSelectedReasoningEffort(resumed.reasoningEffort);
+      }
       setSelectedThread(resumedThread);
       setThreads((current) => current.map((candidate) => (candidate.id === resumedThread.id ? { ...candidate, ...resumedThread } : candidate)));
 
@@ -522,6 +546,7 @@ export function useCodexAppServer() {
       clientUserMessageId,
       cwd: resumedThread.cwd,
       model: selectedModelId,
+      effort: selectedReasoningEffort,
       permissionMode: selectedPermissionModeId,
     });
     return resumedThread;
@@ -669,11 +694,12 @@ export function useCodexAppServer() {
 
     try {
       const cwd = selectedThread?.cwd ?? recentCwds[0] ?? null;
-      const [modelsResult, permissionProfilesResult, skillsResult, pluginsResult] = await Promise.allSettled([
+      const [modelsResult, permissionProfilesResult, skillsResult, pluginsResult, rateLimitsResult] = await Promise.allSettled([
         loadModels(client),
         loadPermissionProfiles(client, cwd),
         loadSkills(client, cwd),
         loadInstalledPlugins(client, cwd),
+        loadAccountRateLimits(client),
       ]);
 
       if (modelsResult.status === "rejected") {
@@ -690,10 +716,19 @@ export function useCodexAppServer() {
         permissionProfilesResult.status === "rejected" ? `permission profiles unavailable: ${compactRpcError(permissionProfilesResult.reason)}` : null,
         skillsResult.status === "rejected" ? `skills unavailable: ${compactRpcError(skillsResult.reason)}` : null,
         pluginsResult.status === "rejected" ? `plugins unavailable: ${compactRpcError(pluginsResult.reason)}` : null,
+        rateLimitsResult.status === "rejected" ? `rate limits unavailable: ${compactRpcError(rateLimitsResult.reason)}` : null,
       ].filter((line): line is string => Boolean(line));
 
       setPickerData({ models: modelsResult.value, permissionProfiles, skills, plugins });
-      setSelectedModelId((current) => current ?? modelsResult.value.find((model) => model.isDefault)?.model ?? modelsResult.value[0]?.model ?? null);
+      // 额度读取失败时保留上一次快照，避免面板闪成「暂无额度数据」。
+      if (rateLimitsResult.status === "fulfilled") {
+        setRateLimits(rateLimitsResult.value);
+      }
+
+      // 默认模型必须先算出来，才能取到它自己的 defaultReasoningEffort（selectedModelId 此时可能还是 null）。
+      const defaultModel = modelsResult.value.find((model) => model.isDefault) ?? modelsResult.value[0] ?? null;
+      setSelectedModelId((current) => current ?? defaultModel?.model ?? null);
+      setSelectedReasoningEffort((current) => current ?? modelsResult.value.find((model) => model.model === (selectedModelId ?? defaultModel?.model))?.defaultReasoningEffort ?? null);
 
       if (optionalLogs.length) {
         // skills/plugins 是输入框增强能力，加载失败时不影响主连接和会话功能。
@@ -726,7 +761,14 @@ export function useCodexAppServer() {
 
   const selectModel = (modelId: string) => {
     setSelectedModelId(modelId);
-    void updateSelectedThreadSettings({ model: modelId }, "model settings update failed");
+    const effort = pickerData.models.find((model) => model.model === modelId)?.defaultReasoningEffort ?? null;
+    setSelectedReasoningEffort(effort);
+    void updateSelectedThreadSettings({ model: modelId, effort }, "model settings update failed");
+  };
+
+  const selectReasoningEffort = (effort: string) => {
+    setSelectedReasoningEffort(effort);
+    void updateSelectedThreadSettings({ effort }, "reasoning settings update failed");
   };
 
   const selectPermissionMode = (modeId: PermissionModeId) => {
@@ -949,8 +991,10 @@ export function useCodexAppServer() {
     isInterruptingTurn,
     isLoadingPickerData,
     selectedModelId,
+    selectedReasoningEffort,
     selectedPermissionModeId,
     pickerData,
+    rateLimits,
     activeTurnId,
     isResponding: Boolean(activeTurnId) || selectedThread?.status.type === "active",
     statusLabel: activeTurnId ? "正在回复..." : getThreadStatusLabel(selectedThread),
@@ -968,6 +1012,7 @@ export function useCodexAppServer() {
     createThread,
     sendMessage,
     setSelectedModelId: selectModel,
+    setSelectedReasoningEffort: selectReasoningEffort,
     setSelectedPermissionModeId: selectPermissionMode,
     renameThread,
     archiveSelectedThread,
