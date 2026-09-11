@@ -168,3 +168,7 @@ CODEX_APP_SERVER_URL=ws://127.0.0.1:4500 pnpm probe:app-server
 ## License
 
 MIT
+
+# 更新说明
+[v1.0.0] 20260911
+1. 修复App Server 将同一个 thread.id 返回多次的问题。

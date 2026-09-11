@@ -130,7 +130,28 @@ export async function loadThreads(client: JsonRpcClient, archived: boolean) {
   };
   const response = await client.request<ThreadListResponse>("thread/list", params);
 
-  return response.data;
+  return dedupeThreadsById(response.data);
+}
+
+function dedupeThreadsById(threads: Thread[]) {
+  const latestById = new Map<string, Thread>();
+
+  for (const thread of threads) {
+    const existing = latestById.get(thread.id);
+    const threadTimestamp = thread.updatedAt || thread.createdAt || 0;
+    const existingTimestamp = existing ? existing.updatedAt || existing.createdAt || 0 : -1;
+
+    // app-server 扫描状态库和历史 JSONL 时可能返回同一 thread.id 的多个阶段快照。
+    if (!existing || threadTimestamp > existingTimestamp) {
+      latestById.set(thread.id, thread);
+    }
+  }
+
+  return [...latestById.values()].sort((first, second) => {
+    const firstTimestamp = first.updatedAt || first.createdAt || 0;
+    const secondTimestamp = second.updatedAt || second.createdAt || 0;
+    return secondTimestamp - firstTimestamp;
+  });
 }
 
 export async function loadModels(client: JsonRpcClient) {

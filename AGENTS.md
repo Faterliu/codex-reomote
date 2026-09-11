@@ -35,6 +35,33 @@ pnpm protocol:generate
 - Codex App Server WebSocket 常见端口是 `4500`。
 - 本地 relay 常见端口是 `4501`。
 
+## 本机 APK 构建
+
+构建工具位于：
+
+- JDK 17：`C:\Users\liuzhuo\AppData\Local\Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\CodexAndroidBuild\jdk\jdk-17.0.20.1+1`
+- Android SDK：`C:\Users\liuzhuo\AppData\Local\Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\CodexAndroidBuild\android-sdk`
+- SDK 已包含 Android 36、Build Tools 36.0.0、NDK 27.1 和 CMake 3.22.1。
+
+Windows 下直接在本仓库编译会触发 CMake 长路径错误。先把最新源码复制到 `C:\a`，排除 `.git`、`node_modules` 和旧的 `apps\mobile\android`，再执行：
+
+```powershell
+$BuildRoot = 'C:\Users\liuzhuo\AppData\Local\Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\CodexAndroidBuild'
+$env:JAVA_HOME = "$BuildRoot\jdk\jdk-17.0.20.1+1"
+$env:ANDROID_HOME = "$BuildRoot\android-sdk"
+$env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
+$env:NODE_ENV = 'production'
+
+cd C:\a
+pnpm install --frozen-lockfile --node-linker=hoisted
+cd apps\mobile
+C:\a\node_modules\.bin\expo.cmd prebuild --clean --platform android --no-install
+cd android
+.\gradlew.bat assembleRelease --no-daemon
+```
+
+产物位于 `C:\a\apps\mobile\android\app\build\outputs\apk\release\app-release.apk`。
+
 ## App Server / Relay 约定
 
 - 本机 `codex app-server` 优先监听 `ws://127.0.0.1:4500`。
