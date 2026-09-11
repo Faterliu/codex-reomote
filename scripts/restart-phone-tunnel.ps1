@@ -83,6 +83,6 @@ if ($listenerPids.Count -eq 0) {
 }
 
 Write-Host "Starting the local phone tunnel services..."
-& $StartScript -ServerHost $ServerHost -ServerUser $ServerUser -AppServerPort $AppServerPort -RelayPort $RelayPort
+& $StartScript -ServerHost $ServerHost -ServerUser $ServerUser -AppServerPort $AppServerPort -RelayPort $RelayPort -Once
 
 Write-Host "Restart complete. Reconnect the phone app, then open the affected task again."

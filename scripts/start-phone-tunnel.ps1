@@ -2,8 +2,10 @@
 param(
   [string]$ServerHost = "8.148.73.94",
   [string]$ServerUser = "root",
-  [int]$AppServerPort = 4500,
-  [int]$RelayPort = 4501
+  [ValidateRange(1,65535)][int]$AppServerPort = 4500,
+  [ValidateRange(1,65535)][int]$RelayPort = 4501,
+  [switch]$Once,
+  [ValidateRange(10,3600)][int]$CheckIntervalSeconds = 60
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,6 +20,7 @@ $NodeCommand = (Get-Command node -ErrorAction Stop).Source
 $SshCommand = Join-Path $env:SystemRoot "System32\OpenSSH\ssh.exe"
 $RuntimeRoot = Join-Path $env:LOCALAPPDATA "CodexMobilePhoneTunnel"
 $LogRoot = Join-Path $RuntimeRoot "logs"
+$WatcherPidFile = Join-Path $RuntimeRoot "watcher.pid"
 $RunId = Get-Date -Format "yyyyMMdd-HHmmss"
 $RemoteTarget = "$ServerUser@$ServerHost"
 
@@ -40,7 +43,11 @@ New-Item -ItemType Directory -Force -Path $LogRoot | Out-Null
 function Test-TcpPort {
   param([int]$Port)
 
-  return Test-NetConnection -ComputerName "127.0.0.1" -Port $Port -InformationLevel Quiet -WarningAction SilentlyContinue
+  $client = New-Object System.Net.Sockets.TcpClient
+  try {
+    $attempt = $client.ConnectAsync('127.0.0.1', $Port)
+    return $attempt.Wait(2000) -and $client.Connected
+  } catch { return $false } finally { $client.Dispose() }
 }
 
 function Test-RelayReady {
@@ -72,7 +79,7 @@ function Wait-For {
 
 function Invoke-RemoteReady {
   try {
-    $response = & $SshCommand -F NUL -o BatchMode=yes -o ConnectTimeout=10 $RemoteTarget "curl --noproxy '*' --fail --silent --show-error --max-time 5 http://127.0.0.1:$RelayPort/readyz"
+    $response = & $SshCommand -F NUL -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ConnectionAttempts=1 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 $RemoteTarget "curl --noproxy '*' --fail --silent --show-error --max-time 5 http://127.0.0.1:$RelayPort/readyz" 2>$null
     return $LASTEXITCODE -eq 0 -and ($response -join "").Trim() -eq "ok"
   } catch {
     return $false
@@ -81,7 +88,7 @@ function Invoke-RemoteReady {
 
 function Get-RemoteQuickTunnelUrl {
   try {
-    $url = & $SshCommand -F NUL -o BatchMode=yes -o ConnectTimeout=10 $RemoteTarget "grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/codex-mobile-cloudflared.log 2>/dev/null | tail -n 1"
+    $url = & $SshCommand -F NUL -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 $RemoteTarget "grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/codex-mobile-cloudflared.log 2>/dev/null | tail -n 1" 2>$null
     if ($LASTEXITCODE -eq 0 -and $url) {
       return ($url | Select-Object -Last 1).Trim() -replace "^https://", "wss://"
     }
@@ -92,6 +99,13 @@ function Get-RemoteQuickTunnelUrl {
   return $null
 }
 
+function Invoke-PhoneRepair {
+  $repairLock = New-Object System.Threading.Mutex($false, "Global\CodexPhoneRepair-$AppServerPort-$RelayPort")
+  $locked = $false
+  try {
+    try { $locked = $repairLock.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $locked = $true }
+    if (-not $locked) { Write-Host 'Another repair is running; skipping.'; return }
+    $RunId = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $started = [ordered]@{
   appServer = $null
   relay = $null
@@ -136,10 +150,16 @@ if (-not (Test-RelayReady)) {
 }
 
 if (-not (Invoke-RemoteReady)) {
+  # Check SSH connectivity and remote port ownership before creating a tunnel.
+  $remoteCheck = & $SshCommand -F NUL -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ConnectionAttempts=1 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 $RemoteTarget "ss -ltnH 'sport = :$RelayPort'" 2>$null
+  if ($LASTEXITCODE -ne 0) { throw 'SSH unavailable; retry after the network recovers.' }
+  if ($remoteCheck) { throw 'Remote relay port is still occupied; waiting for the old connection to expire.' }
   $tunnel = Start-Process -FilePath $SshCommand -ArgumentList @(
     "-F", "NUL",
     "-N",
     "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=10",
+    "-o", "ConnectionAttempts=1",
     "-o", "StrictHostKeyChecking=yes",
     "-o", "ExitOnForwardFailure=yes",
     "-o", "ServerAliveInterval=30",
@@ -148,7 +168,14 @@ if (-not (Invoke-RemoteReady)) {
     $RemoteTarget
   ) -WindowStyle Hidden -RedirectStandardOutput (Join-Path $LogRoot "$RunId-reverse-tunnel.stdout.log") -RedirectStandardError (Join-Path $LogRoot "$RunId-reverse-tunnel.stderr.log") -PassThru
   $started.reverseTunnel = $tunnel.Id
-  Wait-For -Condition { Invoke-RemoteReady } -Description "server-side Relay readiness through the SSH reverse tunnel" -TimeoutSeconds 20
+  try {
+    Wait-For -Condition { Invoke-RemoteReady } -Description "server-side Relay readiness through the SSH reverse tunnel" -TimeoutSeconds 20
+  } catch {
+    # Only clean up the process created by this attempt, never an unrelated SSH.
+    $tunnel.Refresh()
+    if (-not $tunnel.HasExited) { $tunnel.Kill(); $tunnel.WaitForExit(5000) | Out-Null }
+    throw
+  }
   Write-Host "Started SSH reverse tunnel (PID $($tunnel.Id))."
 } else {
   Write-Host "Server-side Relay is already healthy; reusing the existing reverse tunnel."
@@ -172,3 +199,43 @@ if ($publicUrl) {
 }
 Write-Host "Relay token remains in: $RelayTokenFile"
 Write-Host "Logs: $LogRoot"
+  } finally {
+    if ($locked) { $repairLock.ReleaseMutex() }
+    $repairLock.Dispose()
+  }
+}
+
+if ($Once) { Invoke-PhoneRepair; return }
+
+# A single foreground watcher survives transient network errors. Ctrl+C stops it.
+$watchLock = New-Object System.Threading.Mutex($false, "Global\CodexPhoneWatch-$AppServerPort-$RelayPort")
+$watchLocked = $false
+try {
+  try { $watchLocked = $watchLock.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $watchLocked = $true }
+  if (-not $watchLocked) { Write-Host 'Phone tunnel watcher is already running.'; return }
+  $PID | Set-Content -LiteralPath $WatcherPidFile -Encoding ascii
+  try { Invoke-PhoneRepair } catch { Write-Warning $_.Exception.Message }
+  Write-Host "Watching every $CheckIntervalSeconds seconds. Keep this process running; Ctrl+C stops monitoring."
+  $failures = 0
+  while ($true) {
+    Start-Sleep -Seconds $CheckIntervalSeconds
+    if ((Test-TcpPort -Port $AppServerPort) -and (Test-RelayReady) -and (Invoke-RemoteReady)) {
+      if ($failures -gt 0) { Write-Host "$(Get-Date -Format s) Connection recovered." }
+      $failures = 0
+      continue
+    }
+    $failures++
+    Write-Warning "$(Get-Date -Format s) Health check failed ($failures/2)."
+    if ($failures -ge 2) {
+      try { Invoke-PhoneRepair } catch { Write-Warning $_.Exception.Message }
+      $failures = 0
+    }
+  }
+} finally {
+  if (Test-Path -LiteralPath $WatcherPidFile) {
+    $recordedPid = (Get-Content -LiteralPath $WatcherPidFile -Raw -ErrorAction SilentlyContinue).Trim()
+    if ($recordedPid -eq "$PID") { Remove-Item -LiteralPath $WatcherPidFile -Force -ErrorAction SilentlyContinue }
+  }
+  if ($watchLocked) { $watchLock.ReleaseMutex() }
+  $watchLock.Dispose()
+}
