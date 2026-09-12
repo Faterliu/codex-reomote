@@ -12,6 +12,7 @@ import type {
 
 import { JsonRpcClient } from "@/lib/jsonRpcClient";
 import { mergeRateLimits } from "@/lib/rateLimitFormat";
+import { getSupportedReasoningEfforts } from "@/lib/reasoningEffort";
 import { flattenTurns, timelineEntryFromCommandApproval, type TimelineEntry } from "@/lib/threadFormat";
 import type { ConnectionState, JsonRpcIncoming, PendingApproval, PendingUserInputRequest, ReadinessStatus } from "@/types/codex";
 import type { ComposerImageAttachment, ComposerMention } from "@/types/composer";
@@ -384,6 +385,19 @@ export function useCodexAppServer() {
     await refreshThreads({ archived: next });
   };
 
+  // 打开会话后统一落地 timeline 状态，resume 失败走兜底拉取时复用同一套逻辑。
+  const applyOpenedThreadPage = (threadId: string, page: Awaited<ReturnType<typeof loadTurnPage>>) => {
+    if (selectedThreadIdRef.current !== threadId) {
+      return;
+    }
+
+    const pageTimeline = flattenTurns(page.turns);
+    setActiveTurnId(getInProgressTurnId(page.turns));
+    setTimeline(pageTimeline);
+    setOlderTurnsCursor(page.nextCursor);
+    setPendingEntries((current) => reconcilePendingEntries(current, pageTimeline, threadId));
+  };
+
   const openThread = async (thread: Thread) => {
     selectedThreadIdRef.current = thread.id;
     setSelectedThread(thread);
@@ -393,25 +407,38 @@ export function useCodexAppServer() {
     setActiveTurnId(null);
 
     try {
-      const resumed = await resumeThreadWithInitialTurnPage(client, thread, { force: thread.status.type === "active" });
+      // 打开会话必须拿到该 thread 自己的 model / effort。resume 和 turns/list 的往返次数相同，
+      // 所以这里始终走 resume，避免沿用上一个会话的设置。
+      const resumed = await resumeThreadWithInitialTurnPage(client, thread, {
+        force: thread.status.type === "active",
+        requireThreadSettings: true,
+      });
       if (selectedThreadIdRef.current !== thread.id) {
         return;
       }
+
       const resumedThread = resumed.thread;
-      // resume 未返回 effort（未真正 resume 的分支）时保留当前选择，避免被清空。
-      if (resumed.reasoningEffort !== undefined) {
-        setSelectedReasoningEffort(resumed.reasoningEffort);
-      }
+      // 无条件覆盖：resume 返回的就是该 thread 的权威设置，不做「保留当前值」的兜底。
+      // 拿不到时清空，turn/start 不传这两个字段，由 app-server 按该 thread 自身设置执行。
+      setSelectedModelId(resumed.model || null);
+      setSelectedReasoningEffort(resumed.reasoningEffort ?? null);
       setSelectedThread(resumedThread);
-      const page = resumed.initialTurnsPage ?? (await loadTurnPage(client, resumedThread.id, null));
-      if (selectedThreadIdRef.current !== thread.id) {
-        return;
+
+      applyOpenedThreadPage(thread.id, resumed.initialTurnsPage ?? (await loadTurnPage(client, resumedThread.id, null)));
+    } catch (error) {
+      // 读不到权威设置时必须清空，绝不能把上一个会话的模型 / 思考程度发给当前会话。
+      setSelectedModelId(null);
+      setSelectedReasoningEffort(null);
+
+      const message = compactRpcError(error);
+      setRecentError(`open thread failed: ${message}`);
+      setLogs((current) => [`open thread failed: ${message}`, ...current].slice(0, 30));
+
+      try {
+        applyOpenedThreadPage(thread.id, await loadTurnPage(client, thread.id, null));
+      } catch {
+        // 兜底拉取也失败时保留空 timeline，错误已记录在 recentError。
       }
-      const pageTimeline = flattenTurns(page.turns);
-      setActiveTurnId(getInProgressTurnId(page.turns));
-      setTimeline(pageTimeline);
-      setOlderTurnsCursor(page.nextCursor);
-      setPendingEntries((current) => reconcilePendingEntries(current, pageTimeline, resumedThread.id));
     } finally {
       if (selectedThreadIdRef.current === thread.id) {
         setIsOpeningThread(false);
@@ -430,9 +457,9 @@ export function useCodexAppServer() {
       }
 
       const resumedThread = resumed.thread;
-      if (resumed.reasoningEffort !== undefined) {
-        setSelectedReasoningEffort(resumed.reasoningEffort);
-      }
+      // 重连后同样以服务端为准，覆盖模型与思考程度，避免电脑端改过之后手机端不跟。
+      setSelectedModelId(resumed.model || null);
+      setSelectedReasoningEffort(resumed.reasoningEffort ?? null);
       setSelectedThread(resumedThread);
       setThreads((current) => current.map((candidate) => (candidate.id === resumedThread.id ? { ...candidate, ...resumedThread } : candidate)));
 
@@ -727,8 +754,14 @@ export function useCodexAppServer() {
 
       // 默认模型必须先算出来，才能取到它自己的 defaultReasoningEffort（selectedModelId 此时可能还是 null）。
       const defaultModel = modelsResult.value.find((model) => model.isDefault) ?? modelsResult.value[0] ?? null;
-      setSelectedModelId((current) => current ?? defaultModel?.model ?? null);
-      setSelectedReasoningEffort((current) => current ?? modelsResult.value.find((model) => model.model === (selectedModelId ?? defaultModel?.model))?.defaultReasoningEffort ?? null);
+
+      if (!selectedThreadIdRef.current) {
+        // 只在没有选中会话（新建会话草稿）时用应用默认值兜底。
+        // 选中会话时模型 / 思考程度必须以该 thread 的 resume 结果为准：resume 失败会清空这两个值，
+        // 若在这里填回默认值，下一次 turn/start 就会用默认模型覆盖掉服务端该会话的真实设置。
+        setSelectedModelId((current) => current ?? defaultModel?.model ?? null);
+        setSelectedReasoningEffort((current) => current ?? modelsResult.value.find((model) => model.model === (selectedModelId ?? defaultModel?.model))?.defaultReasoningEffort ?? null);
+      }
 
       if (optionalLogs.length) {
         // skills/plugins 是输入框增强能力，加载失败时不影响主连接和会话功能。
@@ -760,10 +793,16 @@ export function useCodexAppServer() {
   };
 
   const selectModel = (modelId: string) => {
+    const nextModel = pickerData.models.find((model) => model.model === modelId) ?? null;
+    // 只改用户真正点过的那个参数：新模型仍支持当前思考程度就原样保留，
+    // 只有当前档位在新模型上不被支持时才回退到新模型的默认档位。
+    const supportedEfforts = nextModel ? getSupportedReasoningEfforts(nextModel) : [];
+    const keptEffort = supportedEfforts.find((option) => option.id === selectedReasoningEffort);
+    const nextEffort = keptEffort?.id ?? nextModel?.defaultReasoningEffort ?? null;
+
     setSelectedModelId(modelId);
-    const effort = pickerData.models.find((model) => model.model === modelId)?.defaultReasoningEffort ?? null;
-    setSelectedReasoningEffort(effort);
-    void updateSelectedThreadSettings({ model: modelId, effort }, "model settings update failed");
+    setSelectedReasoningEffort(nextEffort);
+    void updateSelectedThreadSettings({ model: modelId, effort: nextEffort }, "model settings update failed");
   };
 
   const selectReasoningEffort = (effort: string) => {

@@ -18,6 +18,9 @@ web-build/
 .idea/
 .DS_Store
 
+# 本地 agent 状态（记忆、会话数据），只存在于本机，不要进入仓库。
+.workbuddy/
+
 # TypeScript / 测试 / 构建产物。
 *.tsbuildinfo
 coverage/
