@@ -16,7 +16,7 @@
 3. 不要手改 `packages/protocol/src/**` 里的生成文件；协议变化请运行 `pnpm protocol:generate`。
 4. 新增生产依赖前需要先解释用途、替代方案和选择原因，并等待用户确认。
 5. 关键逻辑可以写中文注释，尤其是协议兼容、移动端限制、鉴权和重连逻辑。
-6. 不要提交 `node_modules`、Expo 缓存、构建产物或本地 token。
+6. 不要提交 `node_modules`、Expo 缓存、构建产物或本地 token。`.workbuddy/`（本地 agent 记忆与会话数据）已在 `.gitignore` 中，不要把它加回版本控制。
 7. 这个客户端连接的是显式启动的 `codex app-server`，不是直接控制 Codex Desktop App 窗口。
 
 ## 常用命令
@@ -61,6 +61,67 @@ cd android
 ```
 
 产物位于 `C:\a\apps\mobile\android\app\build\outputs\apk\release\app-release.apk`。
+
+### 在受限沙箱里构建（workbuddy实测可用）
+
+上面那段 PowerShell 流程在部分 agent 运行环境里**跑不通**：Bash 的 PATH 缺 `/usr/bin`（`ls`/`tr` 都找不到），
+从 Bash 调 `cmd.exe` 会被沙箱拦截（所以 `gradlew.bat` 不可用），PowerShell 工具也可能不回传 stdout。
+实测可用的等价路径是全程走 Bash + Gradle 自带的 POSIX wrapper：
+
+```bash
+export PATH="/usr/bin:/bin:/c/Windows/System32:$PATH"
+export MSYS2_ARG_CONV_EXCL='*'   # 否则 robocopy 的 /E /XD 会被 MSYS 当路径转换
+
+# 1. 同步源码到 C:\a（排除 android，让 prebuild 重新生成）
+Robocopy.exe "C:\file\app-codexapp" "C:\a" /E \
+  /XD .git node_modules dist build-logs android .pnpm-store .deep-copilot .workbuddy /NFL /NDL /NP
+
+# 2. 安装依赖
+cd /c/a && pnpm install --frozen-lockfile --node-linker=hoisted
+
+# 3. 生成原生工程
+cd /c/a/apps/mobile && NODE_ENV=production /c/a/node_modules/.bin/expo.CMD prebuild --platform android --no-install
+
+# 4. 手写 android/local.properties（prebuild 不会生成）
+#    sdk.dir=C\:\\Users\\liuzhuo\\AppData\\Local\\Packages\\OpenAI.Codex_2p2nqsd0c76g0\\LocalCache\\Local\\CodexAndroidBuild\\android-sdk
+
+# 5. 编译（JAVA_HOME 必须是 POSIX 风格路径）
+JDK="/c/Users/liuzhuo/AppData/Local/Packages/OpenAI.Codex_2p2nqsd0c76g0/LocalCache/Local/CodexAndroidBuild/jdk/jdk-17.0.20.1+1"
+export JAVA_HOME="$JDK"
+export ANDROID_HOME="C:\\Users\\liuzhuo\\AppData\\Local\\Packages\\OpenAI.Codex_2p2nqsd0c76g0\\LocalCache\\Local\\CodexAndroidBuild\\android-sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export NODE_ENV=production
+export PATH="$JDK/bin:$PATH"
+cd /c/a/apps/mobile/android && bash ./gradlew assembleRelease --no-daemon
+```
+
+坑位速查：
+
+| 现象 | 处理 |
+|---|---|
+| `ls: command not found` | `export PATH="/usr/bin:/bin:/c/Windows/System32:$PATH"` |
+| `Invoking cmd.exe from Bash ... blocked` | 别用 `.bat`/`.cmd`，改用 POSIX wrapper `bash ./gradlew` |
+| `gradlew` 找不到 java | `JAVA_HOME` 用 `/c/Users/...`，Windows 反斜杠风格不生效 |
+| robocopy 报参数错误 | `export MSYS2_ARG_CONV_EXCL='*'` |
+| prebuild 长时间无输出 | 见下 |
+
+**`expo prebuild --clean` 会偶发卡死**：停滞十分钟零文件写入，`C:\a\apps\mobile\android` 处于半清理状态
+（残留上一次构建的 `.gradle`/`.kotlin`/`local.properties`，却缺少刚生成的 `gradle/wrapper/`）——
+`--clean` 的删除步骤被沙箱部分拦截。处置：停掉任务 → `rm -rf` 清空该目录 → **不带 `--clean`** 重跑
+（目录本已为空，两者等价），几秒即完成。
+
+排查卡死不要只看进程状态，直接看目录时间戳：
+`find /c/a/apps/mobile/android -maxdepth 2 -printf "%T+ %p\n" | sort -r | head`。
+另外 `| tail -N` 会缓冲到进程结束才输出，排查时改用 `| tee <log>` 边跑边看。
+
+### 产物校验与归档
+
+- 归档到 `dist/`，命名 `codex-mobile-<特性>-<YYYYMMDD>.apk`，同一天的第二版加 `-r2` 之类后缀。`dist/` 已被 `.gitignore` 忽略。
+- 签名：release buildType 继承 `signingConfigs.debug`，是 **v2 签名**。判断 v2 要解析 APK Signing Block
+  （magic 位于 ZIP 中央目录前 16 字节），只看 `META-INF/*.RSA` 会把已签名的包误判成未签名。
+- 声明「改动已生效」前，解出 `assets/index.android.bundle` 并搜索本次新增的**对象字面量属性名**
+  （调用点里显式写出的 key）。Metro 压缩默认不改属性名，所以这类标识搜得到；局部变量名可能被改名，
+  不要拿它当依据。这比只看「构建成功」可靠得多。
 
 ## 当前链路配置（2026-09-11）
 
