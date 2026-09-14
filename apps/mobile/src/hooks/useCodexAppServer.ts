@@ -29,6 +29,7 @@ import {
   archiveThread,
   buildClientUserMessageId,
   ensureThreadResumed,
+  forkThreadAtTurn as forkThreadAtTurnRpc,
   formatReadinessLog,
   getInProgressTurnId,
   loadInstalledPlugins,
@@ -66,7 +67,27 @@ import type { DeltaBuffer, LiveEvent, NormalizedConnection, PendingEntry, Picker
 const DETAIL_REFRESH_INTERVAL_MS = 3000;
 const RECONNECT_BASE_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 10000;
+const MAX_RECONNECT_ATTEMPTS = 6;
 const MAX_LOAD_MORE_PAGE_ATTEMPTS = 3;
+
+export type ForkThreadAtTurnOptions = {
+  threadId: string;
+  turnId: string;
+};
+
+export type ForkThreadAtTurnResult = {
+  threadId: string;
+};
+
+const FORK_ERROR_MESSAGES = {
+  disconnected: "无法创建分支：当前未连接到 Codex App Server。",
+  busy: "正在创建分支，请稍候再试。",
+  invalidTurn: "当前轮次还不支持开新分支。",
+  unsupported: "当前 Codex App Server 版本不支持 thread/fork，请升级 Codex 后再试。",
+  turnInProgress: "当前轮次尚未结束，暂时无法从这里创建分支。",
+  connectionLost: "创建分支失败：连接已中断，请重新连接后再试。",
+  unknown: "创建分支失败，请稍后重试。",
+} as const;
 
 export type CodexAppServerState = ReturnType<typeof useCodexAppServer>;
 
@@ -88,6 +109,7 @@ export function useCodexAppServer() {
   const [isRefreshingThread, setIsRefreshingThread] = useState(false);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
   const [isInterruptingTurn, setIsInterruptingTurn] = useState(false);
+  const [forkingTurnId, setForkingTurnId] = useState<string | null>(null);
   const [isLoadingPickerData, setIsLoadingPickerData] = useState(false);
   const [olderTurnsCursor, setOlderTurnsCursor] = useState<string | null>(null);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
@@ -322,6 +344,12 @@ export function useCodexAppServer() {
     }
 
     const attempt = reconnectAttemptRef.current + 1;
+    if (attempt > MAX_RECONNECT_ATTEMPTS) {
+      manualDisconnectRef.current = true;
+      setRecentError("自动重连已停止：连接连续失败，请检查公网 Tunnel 是否可用，并确认 Quick Tunnel 地址未发生变化。");
+      setLogs((current) => ["自动重连已停止，请更新连接配置后手动重试。", ...current].slice(0, 30));
+      return;
+    }
     const delay = Math.min(RECONNECT_BASE_DELAY_MS * 2 ** (attempt - 1), RECONNECT_MAX_DELAY_MS);
     reconnectAttemptRef.current = attempt;
 
@@ -482,6 +510,51 @@ export function useCodexAppServer() {
       setRecentError(`resume recovery failed: ${message}`);
       setLogs((current) => [`resume recovery failed: ${message}`, ...current].slice(0, 30));
       await refreshSelectedThread({ silent: true });
+    }
+  };
+
+  // 「从指定已完成 Turn 开新分支」：走 codex app-server 原生 thread/fork。
+  // 不用 git branch，也不在本地拼接历史；fork 边界是真实的 turn.id。
+  const forkThreadAtTurn = async ({ threadId, turnId }: ForkThreadAtTurnOptions): Promise<ForkThreadAtTurnResult> => {
+    if (state !== "connected") {
+      throw new Error(FORK_ERROR_MESSAGES.disconnected);
+    }
+
+    if (!threadId || !turnId) {
+      throw new Error(FORK_ERROR_MESSAGES.invalidTurn);
+    }
+
+    // 防抖：同一时间只允许一个 fork 在途，避免连点创建出多个分支。
+    if (forkingTurnId) {
+      throw new Error(FORK_ERROR_MESSAGES.busy);
+    }
+
+    setForkingTurnId(turnId);
+    setRecentError(null);
+    setLogs((current) => [`[fork] start sourceThreadId=${threadId} lastTurnId=${turnId}`, ...current].slice(0, 30));
+
+    try {
+      const forkedThread = await forkThreadAtTurnRpc(client, threadId, turnId);
+      setLogs((current) => [`[fork] rpc success newThreadId=${forkedThread.id}`, ...current].slice(0, 30));
+
+      // thread/fork response 和 thread/started notification 都可能送进同一个新 thread，
+      // 统一按 thread.id 去重，避免会话列表出现重复项。
+      setThreads((current) => upsertThread(current, forkedThread));
+      setArchivedThreads((current) => current.filter((candidate) => candidate.id !== forkedThread.id));
+
+      // 复用既有的「打开会话」流程：resume 拿该 thread 的权威模型/思考程度设置，
+      // 并按 app-server 返回的历史只加载到目标 Turn（含）为止，不额外叠加 read/resume 链。
+      await openThread(forkedThread);
+      setLogs((current) => [`[fork] navigation success newThreadId=${forkedThread.id}`, ...current].slice(0, 30));
+
+      return { threadId: forkedThread.id };
+    } catch (error) {
+      const message = toForkErrorMessage(error);
+      setRecentError(message);
+      setLogs((current) => [`[fork] failed rpc=${compactRpcError(error)}`, ...current].slice(0, 30));
+      throw new Error(message);
+    } finally {
+      setForkingTurnId(null);
     }
   };
 
@@ -1062,7 +1135,44 @@ export function useCodexAppServer() {
     interruptTurn,
     resolveApproval,
     resolveUserInputRequest,
+    forkThreadAtTurn,
+    forkingTurnId,
+    isForkingThread: Boolean(forkingTurnId),
   };
+}
+
+/**
+ * 按 thread.id 合并新 thread：已存在就覆盖，不存在才插到最前面。
+ * fork 的 response 与 thread/started notification 都会走这里，所以不能无条件 unshift。
+ */
+function upsertThread(current: Thread[], thread: Thread) {
+  const index = current.findIndex((candidate) => candidate.id === thread.id);
+
+  if (index === -1) {
+    return [thread, ...current];
+  }
+
+  return current.map((candidate, candidateIndex) => (candidateIndex === index ? { ...candidate, ...thread } : candidate));
+}
+
+/** 把 app-server 的 RPC 错误转成用户能看懂的提示，原始错误仍保留在连接日志里。 */
+function toForkErrorMessage(error: unknown) {
+  const raw = getErrorMessage(error);
+  const normalized = raw.toLowerCase();
+
+  if (/unknown method|method not found|-32601|not supported|unsupported method/.test(normalized)) {
+    return FORK_ERROR_MESSAGES.unsupported;
+  }
+
+  if (/last_?turn_?id|in progress|in_progress|still running|is running|active turn/.test(normalized)) {
+    return FORK_ERROR_MESSAGES.turnInProgress;
+  }
+
+  if (/not connected|connection closed|disconnected|socket|network|timeout|timed out/.test(normalized)) {
+    return FORK_ERROR_MESSAGES.connectionLost;
+  }
+
+  return FORK_ERROR_MESSAGES.unknown;
 }
 
 function upsertTimelineEntry(current: TimelineEntry[], entry: TimelineEntry) {

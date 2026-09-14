@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    停止本机手机链路的监控器、App Server、Relay 和 SSH 反向隧道。
+    停止本机手机链路的监控器、App Server、Relay、Cloudflare Tunnel 和 SSH 反向隧道。
 
 .DESCRIPTION
     只关闭本脚本组使用的本机进程，不关闭远程服务器上的 cloudflared。
@@ -17,6 +17,7 @@ Set-StrictMode -Version Latest
 
 $RuntimeRoot = Join-Path $env:LOCALAPPDATA "CodexMobilePhoneTunnel"
 $WatcherPidFile = Join-Path $RuntimeRoot "watcher.pid"
+$LocalCloudflaredPidFile = Join-Path $RuntimeRoot "local-cloudflared.pid"
 $NetstatCommand = Join-Path $env:SystemRoot "System32\netstat.exe"
 
 function Get-ListenerPids {
@@ -48,6 +49,15 @@ if (Test-Path -LiteralPath $WatcherPidFile) {
     Stop-LocalProcess -ProcessId ([int]$watcherText) -Description "phone tunnel watcher"
   }
   Remove-Item -LiteralPath $WatcherPidFile -Force -ErrorAction SilentlyContinue
+}
+
+# 本机 Cloudflare fallback 不监听固定端口，只按启动时记录的 PID 精确清理。
+if (Test-Path -LiteralPath $LocalCloudflaredPidFile) {
+  $cloudflaredText = (Get-Content -LiteralPath $LocalCloudflaredPidFile -Raw -ErrorAction SilentlyContinue).Trim()
+  if ($cloudflaredText -match '^\d+$') {
+    Stop-LocalProcess -ProcessId ([int]$cloudflaredText) -Description "local Cloudflare tunnel"
+  }
+  Remove-Item -LiteralPath $LocalCloudflaredPidFile -Force -ErrorAction SilentlyContinue
 }
 
 # 兼容升级前启动、尚未生成 watcher.pid 的旧监控进程。

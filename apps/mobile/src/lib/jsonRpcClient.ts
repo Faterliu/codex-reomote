@@ -94,6 +94,9 @@ export class JsonRpcClient {
         return;
       }
       this.events.onLog(`websocket closed: ${event.code} ${event.reason || ""}`.trim());
+      if (/\b530\b|\b1033\b/.test(String(event.reason || ""))) {
+        this.events.onLog("公网 Tunnel 连接失败（Cloudflare 530/1033）：Quick Tunnel 当前不可用或地址已失效，请重新获取连接地址。");
+      }
       if (String(event.reason || "").includes("403 Forbidden")) {
         // iPhone / Expo Go 里如果 readyz 正常但握手 403，通常是 WebSocket 没把 Authorization 头带出去。
         this.events.onLog("握手被 403 拒绝：如果是真机直连，请改用 relay 地址，token 输入框留空。");

@@ -36,6 +36,12 @@ type Props = {
   onDownloadHostFile?: (hostPath: string) => void | Promise<void>;
   onResolveApproval?: (decision: ApprovalDecision) => void;
   onResolveUserInputRequest?: (response: ToolRequestUserInputResponse) => void;
+  /** 从本轮创建新分支。只在 entry.canFork 为真（本 turn 最后一条 Codex 回复且已完成）时可用。 */
+  onFork?: (turnId: string) => void | Promise<void>;
+  /** 当前这一条正在创建分支，按钮显示 loading。 */
+  isForking?: boolean;
+  /** 已经有分支在创建中：所有分支按钮都要禁用，避免连点生成多个 thread。 */
+  forkDisabled?: boolean;
 };
 
 export const MessageBubble = memo(function MessageBubble({
@@ -56,6 +62,9 @@ export const MessageBubble = memo(function MessageBubble({
   onDownloadHostFile,
   onResolveApproval,
   onResolveUserInputRequest,
+  onFork,
+  isForking = false,
+  forkDisabled = false,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -73,6 +82,8 @@ export const MessageBubble = memo(function MessageBubble({
   const isToolCard = entry.role === "tool" && (isFileChange || isCommandGroup || isWebSearchGroup || isTurnProcessGroup);
   const shouldRenderMarkdown = entry.role === "assistant" && entry.title === "Codex";
   const canCopy = (entry.role === "user" || shouldRenderMarkdown) && Boolean(entry.body.trim());
+  // 分支入口由数据层统一判定：本 turn 最后一条 Codex 回复 + turn 已完成 + 拿得到真实 turn.id。
+  const canFork = Boolean(onFork) && Boolean(entry.canFork) && Boolean(entry.turnId);
   const shouldShowBubbleTitle = entry.role !== "user" && !shouldRenderMarkdown;
   const shouldShowMetaLabel = Boolean(entry.metaLabel && !shouldRenderMarkdown);
   const showPendingSpinner = entry.role === "user" && entry.pending && !entry.failed;
@@ -219,11 +230,34 @@ export const MessageBubble = memo(function MessageBubble({
             {entry.role === "assistant" ? (
               <View style={styles.agentMessageFooter}>
                 {entry.timestampMs ? <Text style={styles.agentTimeText}>{formatMessageTime(entry.timestampMs)}</Text> : <View />}
-                {canCopy ? (
-                  <Pressable onPress={() => void copyMessage()} style={styles.agentCopyButton}>
-                    <Ionicons color="#516071" name={copied ? "checkmark" : "copy-outline"} size={14} />
-                  </Pressable>
-                ) : null}
+                <View style={styles.agentActionRow}>
+                  {canCopy ? (
+                    <Pressable onPress={() => void copyMessage()} style={styles.agentCopyButton}>
+                      <Ionicons color="#516071" name={copied ? "checkmark" : "copy-outline"} size={14} />
+                    </Pressable>
+                  ) : null}
+                  {canFork ? (
+                    <Pressable
+                      accessibilityLabel="从这一轮开新分支"
+                      disabled={forkDisabled}
+                      hitSlop={8}
+                      onPress={() => {
+                        if (!entry.turnId) {
+                          return;
+                        }
+
+                        void onFork?.(entry.turnId);
+                      }}
+                      style={({ pressed }) => [styles.agentCopyButton, (pressed || forkDisabled) && styles.agentActionPressed]}
+                    >
+                      {isForking ? (
+                        <ActivityIndicator color="#2454d6" size="small" />
+                      ) : (
+                        <Ionicons color="#516071" name="git-branch-outline" size={14} />
+                      )}
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
             ) : null}
             {entry.role === "user" ? (
@@ -484,6 +518,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
     minHeight: 26,
   },
+  agentActionRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+  },
   userTimeText: {
     color: "#dce7ff",
     fontSize: 11,
@@ -557,6 +596,10 @@ const styles = StyleSheet.create({
     height: 26,
     justifyContent: "center",
     width: 26,
+  },
+  // 分支按钮完全复用复制按钮的视觉规格，只补一个按下反馈。
+  agentActionPressed: {
+    opacity: 0.55,
   },
   pendingText: {
     color: "#6b7788",

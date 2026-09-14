@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, StyleSheet, ToastAndroid } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { ThreadDetail } from "@/components/ThreadDetail";
@@ -71,6 +71,25 @@ export default function App() {
     setIsDraftThread(false);
   };
 
+  // 从某一轮开新分支：边界是真实 turn.id，成功后 hook 内部已切到新 thread 并锁好输入框。
+  const forkTurn = async (turnId: string) => {
+    const threadId = codex.selectedThread?.id;
+
+    if (!threadId) {
+      return;
+    }
+
+    try {
+      await codex.forkThreadAtTurn({ threadId, turnId });
+
+      if (Platform.OS === "android") {
+        ToastAndroid.show("已从当前轮次创建新分支", ToastAndroid.SHORT);
+      }
+    } catch (error) {
+      Alert.alert("无法创建分支", error instanceof Error ? error.message : "创建分支失败，请稍后重试。");
+    }
+  };
+
   if (isDetailView) {
     return (
       <SafeAreaProvider>
@@ -87,11 +106,13 @@ export default function App() {
               approval={codex.approval}
               userInputRequest={codex.userInputRequest}
               draftCwd={draftCwd}
+              forkingTurnId={isDraftThread ? null : codex.forkingTurnId}
               hasMoreMessages={isDraftThread ? false : codex.hasMoreMessages}
               isLoadingPickerData={codex.isLoadingPickerData}
               isDraft={isDraftThread}
               isLoading={isDraftThread ? false : codex.isOpeningThread}
               isLoadingMore={codex.isLoadingMore}
+              isForkingThread={isDraftThread ? false : codex.isForkingThread}
               isRefreshing={codex.isRefreshingThread}
               isInterrupting={codex.isInterruptingTurn}
               isResponding={isDraftThread ? codex.isCreatingThread : codex.isResponding}
@@ -110,6 +131,7 @@ export default function App() {
               onChangeDraftCwd={setDraftCwd}
               onCreateNew={startDraftThread}
               onDownloadHostFile={codex.downloadFileFromHost}
+              onForkTurn={forkTurn}
               onInterrupt={codex.interruptTurn}
               onLoadMore={codex.loadOlderMessages}
               onRefresh={codex.refreshSelectedThread}

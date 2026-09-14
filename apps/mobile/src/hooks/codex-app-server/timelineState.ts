@@ -120,6 +120,9 @@ function getTimelineEntrySignature(entry: TimelineEntry | undefined) {
     pending: entry.pending,
     failed: entry.failed,
     streaming: entry.streaming,
+    // turn 完成状态与分支锚点变化也要触发一次替换，否则静默刷新会把 canFork 丢掉。
+    turnStatus: entry.turnStatus,
+    canFork: entry.canFork,
   });
 }
 

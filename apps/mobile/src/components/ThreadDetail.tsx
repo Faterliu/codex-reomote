@@ -69,6 +69,9 @@ type Props = {
   onInterrupt: () => void;
   onResolveApproval?: (decision: ApprovalDecision) => void;
   onResolveUserInputRequest?: (response: ToolRequestUserInputResponse) => void;
+  onForkTurn?: (turnId: string) => void | Promise<void>;
+  forkingTurnId?: string | null;
+  isForkingThread?: boolean;
 };
 
 export function ThreadDetail({
@@ -114,6 +117,9 @@ export function ThreadDetail({
   onInterrupt,
   onResolveApproval,
   onResolveUserInputRequest,
+  onForkTurn,
+  forkingTurnId = null,
+  isForkingThread = false,
 }: Props) {
   const [message, setMessage] = useState("");
   const [selectedFileChange, setSelectedFileChange] = useState<TimelineFileChange | null>(null);
@@ -304,6 +310,9 @@ export function ThreadDetail({
         defaultCollapseWebSearch={item.variant === "webSearchGroup" && !isResponding}
         defaultExpandTurnProcess={Boolean(item.variant === "turnProcessGroup" && item.turnId && item.turnId === activeTurnId)}
         entry={item}
+        forkDisabled={isForkingThread}
+        isForking={Boolean(forkingTurnId && item.turnId === forkingTurnId)}
+        onFork={onForkTurn}
         onOpenAttachment={setSelectedAttachment}
         onOpenAllFileChanges={setSelectedFileChanges}
         onOpenCommandOutput={setSelectedCommandEntry}
@@ -323,6 +332,9 @@ export function ThreadDetail({
       downloadHostFile,
       onResolveApproval,
       onResolveUserInputRequest,
+      onForkTurn,
+      forkingTurnId,
+      isForkingThread,
       activeTurnId,
       userInputEntryId,
       userInputRequest,
@@ -579,20 +591,25 @@ export function ThreadDetail({
             ref={inputRef}
             multiline
             onChangeText={setMessage}
-            placeholder={isDraft ? "输入第一条消息开始新会话" : isResponding ? "追加指令，或留空点取消" : "给当前会话发消息"}
+            placeholder={getComposerPlaceholder({ isDraft, isResponding, isForkingThread })}
             placeholderTextColor="#526071"
             style={styles.input}
             value={message}
           />
           <Pressable
             accessibilityLabel={isResponding && !shouldSteer ? "取消回复" : shouldSteer ? "追加消息" : "发送消息"}
-            disabled={isInterrupting}
+            disabled={isInterrupting || isForkingThread}
             onPress={isResponding && !shouldSteer ? onInterrupt : submit}
-            style={[styles.sendButton, isResponding && !shouldSteer && styles.cancelButton, shouldSteer && styles.steerButton, isInterrupting && styles.sendButtonDisabled]}
+            style={[
+              styles.sendButton,
+              isResponding && !shouldSteer && styles.cancelButton,
+              shouldSteer && styles.steerButton,
+              (isInterrupting || isForkingThread) && styles.sendButtonDisabled,
+            ]}
           >
             <Ionicons
               color="#ffffff"
-              name={isInterrupting ? "hourglass-outline" : shouldSteer ? "arrow-up" : isResponding ? "stop" : "send"}
+              name={isInterrupting || isForkingThread ? "hourglass-outline" : shouldSteer ? "arrow-up" : isResponding ? "stop" : "send"}
               size={19}
             />
           </Pressable>
@@ -604,6 +621,19 @@ export function ThreadDetail({
 
 function MessageSeparator() {
   return <View style={styles.messageSeparator} />;
+}
+
+function getComposerPlaceholder(options: { isDraft: boolean; isResponding: boolean; isForkingThread: boolean }) {
+  // 切到新分支期间先锁住发送，避免下一条消息因为 selectedThread 还没落定而发回原会话。
+  if (options.isForkingThread) {
+    return "正在创建分支…";
+  }
+
+  if (options.isDraft) {
+    return "输入第一条消息开始新会话";
+  }
+
+  return options.isResponding ? "追加指令，或留空点取消" : "给当前会话发消息";
 }
 
 function ActiveFileChangeDock({ fileChanges, onOpen }: { fileChanges: TimelineFileChange[]; onOpen: () => void }) {

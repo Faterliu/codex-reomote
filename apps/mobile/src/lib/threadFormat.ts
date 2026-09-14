@@ -1,8 +1,17 @@
-import type { CommandExecutionRequestApprovalParams, FileUpdateChange, Thread, ThreadItem, Turn, TurnPlanStep, UserInput, WebSearchAction } from "@codex-mobile/protocol/v2";
+import type { CommandExecutionRequestApprovalParams, FileUpdateChange, Thread, ThreadItem, Turn, TurnPlanStep, TurnStatus, UserInput, WebSearchAction } from "@codex-mobile/protocol/v2";
 
 export type TimelineEntry = {
   id: string;
   turnId?: string;
+  /**
+   * 该条消息所属 turn 的状态。只有 completed 的 turn 才允许开新分支。
+   */
+  turnStatus?: TurnStatus;
+  /**
+   * 是否是本 turn 的「开新分支」锚点（本 turn 最后一个 Codex 回复）。
+   * 每个 turn 最多只有一个 entry 为 true，避免同一轮出现多个分支入口。
+   */
+  canFork?: boolean;
   role: "user" | "assistant" | "tool" | "system";
   variant?: "command" | "commandGroup" | "webSearchGroup" | "turnProcessGroup" | "contextCompaction";
   title: string;
@@ -73,10 +82,16 @@ export function flattenTurns(turns: Turn[]) {
   return turns.flatMap((turn) => {
     const seenIds = new Map<string, number>();
     const lastAgentMessageIndex = findLastAgentMessageIndex(turn.items);
+    // 「开新分支」的边界必须是真实的 turn.id，且只挂在最后一条 Codex 回复上：
+    // 一个 turn 可能包含 reasoning / command / fileChange / 多条 agent message，
+    // 但只允许出现一个分支入口。
+    const canFork = turn.status === "completed" && lastAgentMessageIndex !== -1;
     return turn.items.map((item, index) =>
       itemToTimelineEntry(turn.id, item, seenIds, {
         timestampMs: getItemTimestampMs(item, turn),
         turnDurationMs: index === lastAgentMessageIndex ? turn.durationMs : null,
+        turnStatus: turn.status,
+        canFork: canFork && index === lastAgentMessageIndex,
       }),
     );
   });
@@ -153,11 +168,39 @@ export function timelineEntryFromFileChangePatch(turnId: string, itemId: string,
   };
 }
 
+type TimelineEntryOptions = {
+  streaming?: boolean;
+  timestampMs?: number | null;
+  turnDurationMs?: number | null;
+  turnStatus?: TurnStatus;
+  canFork?: boolean;
+};
+
 function itemToTimelineEntry(
   turnId: string,
   item: ThreadItem,
   seenIds?: Map<string, number>,
-  options: { streaming?: boolean; timestampMs?: number | null; turnDurationMs?: number | null } = {},
+  options: TimelineEntryOptions = {},
+): TimelineEntry {
+  const entry = buildItemTimelineEntry(turnId, item, seenIds, options);
+
+  // turn 级元信息统一在出口补齐，避免每个 case 里重复维护。
+  if (options.turnStatus) {
+    entry.turnStatus = options.turnStatus;
+  }
+
+  if (options.canFork) {
+    entry.canFork = true;
+  }
+
+  return entry;
+}
+
+function buildItemTimelineEntry(
+  turnId: string,
+  item: ThreadItem,
+  seenIds?: Map<string, number>,
+  options: TimelineEntryOptions = {},
 ): TimelineEntry {
   const entryId = buildTimelineEntryId(turnId, item, seenIds);
 

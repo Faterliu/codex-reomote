@@ -88,7 +88,7 @@ function Invoke-RemoteReady {
 
 function Get-RemoteQuickTunnelUrl {
   try {
-    $url = & $SshCommand -F NUL -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 $RemoteTarget "grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/codex-mobile-cloudflared.log 2>/dev/null | tail -n 1" 2>$null
+    $url = & $SshCommand -F NUL -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 $RemoteTarget "grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/codex-mobile-cloudflared.log 2>/dev/null | grep -v '^https://api\.trycloudflare\.com$' | tail -n 1" 2>$null
     if ($LASTEXITCODE -eq 0 -and $url) {
       return ($url | Select-Object -Last 1).Trim() -replace "^https://", "wss://"
     }
@@ -97,6 +97,29 @@ function Get-RemoteQuickTunnelUrl {
   }
 
   return $null
+}
+
+function Test-PublicWebSocket {
+  param([string]$PublicUrl)
+
+  if (-not $PublicUrl) { return $false }
+
+  $socket = [System.Net.WebSockets.ClientWebSocket]::new()
+  $timeout = [System.Threading.CancellationTokenSource]::new()
+  try {
+    $relayToken = (Get-Content -LiteralPath $RelayTokenFile -Raw).Trim()
+    $separator = if ($PublicUrl.Contains('?')) { '&' } else { '?' }
+    $uri = [Uri]("$PublicUrl${separator}relay_token=$([Uri]::EscapeDataString($relayToken))")
+    $timeout.CancelAfter(10000)
+    $socket.ConnectAsync($uri, $timeout.Token).GetAwaiter().GetResult()
+    return $socket.State -eq [System.Net.WebSockets.WebSocketState]::Open
+  } catch {
+    return $false
+  } finally {
+    $socket.Abort()
+    $socket.Dispose()
+    $timeout.Dispose()
+  }
 }
 
 function Invoke-PhoneRepair {
@@ -182,6 +205,12 @@ if (-not (Invoke-RemoteReady)) {
 }
 
 $publicUrl = Get-RemoteQuickTunnelUrl
+if (-not $publicUrl) {
+  throw "Remote Cloudflare Quick Tunnel has no current public URL. Check /tmp/codex-mobile-cloudflared.log on $RemoteTarget."
+}
+if (-not (Test-PublicWebSocket -PublicUrl $publicUrl)) {
+  throw "Public WebSocket health check failed for $publicUrl. The Cloudflare connector or Quick Tunnel address is unavailable."
+}
 $state = [ordered]@{
   startedAt = (Get-Date).ToString("o")
   server = $RemoteTarget
@@ -219,7 +248,8 @@ try {
   $failures = 0
   while ($true) {
     Start-Sleep -Seconds $CheckIntervalSeconds
-    if ((Test-TcpPort -Port $AppServerPort) -and (Test-RelayReady) -and (Invoke-RemoteReady)) {
+    $publicUrl = Get-RemoteQuickTunnelUrl
+    if ((Test-TcpPort -Port $AppServerPort) -and (Test-RelayReady) -and (Invoke-RemoteReady) -and (Test-PublicWebSocket -PublicUrl $publicUrl)) {
       if ($failures -gt 0) { Write-Host "$(Get-Date -Format s) Connection recovered." }
       $failures = 0
       continue

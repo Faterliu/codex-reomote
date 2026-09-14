@@ -12,6 +12,8 @@ import type {
   SkillsListParams,
   Thread,
   ThreadArchiveParams,
+  ThreadForkParams,
+  ThreadForkResponse,
   ThreadListResponse,
   ThreadListParams,
   ThreadResumeParams,
@@ -86,6 +88,31 @@ export async function resumeThreadWithInitialTurnPage(
         }
       : null,
   };
+}
+
+/**
+ * 本机 codex app-server（0.153.4）的 thread/fork 支持 lastTurnId，但 packages/protocol 里
+ * 生成版本的 ThreadForkParams 早于该字段。这里做一次性局部扩展而不再手工维护整份类型，
+ * 等 `pnpm protocol:generate` 与协议版本对齐后可直接删除这个交叉类型。
+ */
+export type ThreadForkAtTurnParams = ThreadForkParams & {
+  /** fork 到这一轮为止，包含该轮；指向的 turn 不能仍在执行中。 */
+  lastTurnId: string;
+};
+
+export async function forkThreadAtTurn(client: JsonRpcClient, threadId: string, lastTurnId: string) {
+  if (!threadId) {
+    throw new Error("Missing threadId");
+  }
+
+  if (!lastTurnId) {
+    throw new Error("Missing lastTurnId");
+  }
+
+  const params: ThreadForkAtTurnParams = { threadId, lastTurnId };
+  const response = await client.request<ThreadForkResponse>("thread/fork", params);
+
+  return response.thread;
 }
 
 export async function startTurn(
