@@ -43,11 +43,13 @@ type Props = {
   userInputRequest?: PendingUserInputRequest | null;
   recentCwds?: string[];
   isLoadingPickerData?: boolean;
+  isModelCatalogLoaded?: boolean;
   models?: Model[];
   permissionProfiles?: PermissionProfileSummary[];
   plugins?: PluginSummary[];
   rateLimits?: GetAccountRateLimitsResponse | null;
   selectedModelId?: string | null;
+  selectedModelUnavailable?: boolean;
   selectedReasoningEffort?: string | null;
   selectedPermissionModeId?: PermissionModeId;
   skills?: SkillMetadata[];
@@ -91,11 +93,13 @@ export function ThreadDetail({
   userInputRequest = null,
   recentCwds = [],
   isLoadingPickerData = false,
+  isModelCatalogLoaded = false,
   models = [],
   permissionProfiles = [],
   plugins = [],
   rateLimits = null,
   selectedModelId = null,
+  selectedModelUnavailable = false,
   selectedReasoningEffort = null,
   selectedPermissionModeId = "standard",
   skills = [],
@@ -170,6 +174,7 @@ export function ThreadDetail({
   const workspacePath = thread?.cwd ?? "";
   const headerProject = thread ? threadProjectLabel(thread) : "普通会话";
   const headerTitle = isDraft ? "新会话" : thread ? threadTitle(thread) : "未选择会话";
+  const modelUnavailable = Boolean(selectedModelId && (!isModelCatalogLoaded || selectedModelUnavailable));
   useEffect(() => {
     if (!isDraft) {
       return;
@@ -200,7 +205,7 @@ export function ThreadDetail({
   }, [message]);
 
   const submit = () => {
-    if (!message.trim() && !imageAttachments.length) {
+    if ((!message.trim() && !imageAttachments.length) || modelUnavailable) {
       return;
     }
     void onSend(message, mentions, imageAttachments);
@@ -535,6 +540,23 @@ export function ThreadDetail({
         />
       ) : null}
       <View style={styles.composerShell}>
+        {selectedModelId && (!isModelCatalogLoaded || selectedModelUnavailable) ? (
+          <View style={styles.unsupportedModelNotice}>
+            <Text style={styles.unsupportedModelNoticeText}>
+              {!isModelCatalogLoaded
+                ? "正在同步本机 App Server 的可选模型列表，同步完成前暂不发送。"
+                : `当前会话模型“${selectedModelId}”不在本机 App Server 当前可选列表中。为避免发送失败，请刷新列表并选择可用模型。`}
+            </Text>
+            <View style={styles.unsupportedModelActions}>
+              <Pressable disabled={isLoadingPickerData} onPress={() => void onRefreshPickerData?.()} style={styles.unsupportedModelAction}>
+                <Text style={styles.unsupportedModelActionText}>{isLoadingPickerData ? "正在刷新…" : "刷新模型列表"}</Text>
+              </Pressable>
+              <Pressable onPress={() => setToolsVisible(true)} style={styles.unsupportedModelAction}>
+                <Text style={styles.unsupportedModelActionText}>选择可用模型</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
         {selectedModelLabel || selectedReasoningEffortLabel || selectedPermissionModeLabel || mentions.length ? (
           <View style={styles.composerMeta}>
             {selectedModelLabel ? (
@@ -598,13 +620,13 @@ export function ThreadDetail({
           />
           <Pressable
             accessibilityLabel={isResponding && !shouldSteer ? "取消回复" : shouldSteer ? "追加消息" : "发送消息"}
-            disabled={isInterrupting || isForkingThread}
+            disabled={isInterrupting || isForkingThread || modelUnavailable}
             onPress={isResponding && !shouldSteer ? onInterrupt : submit}
             style={[
               styles.sendButton,
               isResponding && !shouldSteer && styles.cancelButton,
               shouldSteer && styles.steerButton,
-              (isInterrupting || isForkingThread) && styles.sendButtonDisabled,
+              (isInterrupting || isForkingThread || modelUnavailable) && styles.sendButtonDisabled,
             ]}
           >
             <Ionicons
@@ -970,6 +992,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 10,
     paddingBottom: 14,
+  },
+  unsupportedModelNotice: {
+    backgroundColor: "#fff7e6",
+    borderColor: "#f0cf85",
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+    marginBottom: 10,
+    padding: 10,
+  },
+  unsupportedModelNoticeText: {
+    color: "#704b00",
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  unsupportedModelActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  unsupportedModelAction: {
+    backgroundColor: "#ffffff",
+    borderColor: "#d9b95f",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+  },
+  unsupportedModelActionText: {
+    color: "#704b00",
+    fontSize: 12,
+    fontWeight: "800",
   },
   composerMeta: {
     flexDirection: "row",

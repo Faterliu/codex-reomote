@@ -4,20 +4,37 @@ import { Alert, KeyboardAvoidingView, Platform, StyleSheet, ToastAndroid } from 
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { ThreadDetail } from "@/components/ThreadDetail";
+import { AppUpdatePrompt } from "@/components/app-update/AppUpdatePrompt";
 import { HomeTabs } from "@/components/app-shell/HomeTabs";
 import { loadSavedConnectionConfig } from "@/hooks/codex-app-server/connectionStorage";
 import type { RootTab } from "@/components/app-shell/RootTabBar";
 import { useCodexAppServer } from "@/hooks/useCodexAppServer";
 import type { Thread } from "@codex-mobile/protocol/v2";
 import type { ComposerImageAttachment } from "@/types/composer";
+import { useAppUpdater } from "@/hooks/useAppUpdater";
 
 export default function App() {
   const codex = useCodexAppServer();
+  const appUpdater = useAppUpdater();
   const [activeTab, setActiveTab] = useState<RootTab>("threads");
   const [isDraftThread, setIsDraftThread] = useState(false);
   const [draftCwd, setDraftCwd] = useState("");
   const autoConnectAttemptedRef = useRef(false);
   const isDetailView = Boolean(codex.selectedThread) || isDraftThread;
+
+  const handleCheckForUpdates = async () => {
+    try {
+      const hasUpdate = await appUpdater.checkForUpdate();
+      if (!hasUpdate && Platform.OS === "android") {
+        ToastAndroid.show("当前已是最新版本", ToastAndroid.SHORT);
+      }
+    } catch (error) {
+      Alert.alert(
+        "检查更新失败",
+        error instanceof Error ? error.message : "请检查网络连接后重试。",
+      );
+    }
+  };
 
   useEffect(() => {
     if (activeTab !== "threads" || autoConnectAttemptedRef.current || !shouldAutoConnect(codex.state)) {
@@ -95,6 +112,7 @@ export default function App() {
       <SafeAreaProvider>
         <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
           <StatusBar style="dark" />
+          <AppUpdatePrompt controller={appUpdater} />
           {/* 详情页底部输入框贴近屏幕底部，键盘出现时需要由 RN 层主动让出空间。 */}
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -109,6 +127,8 @@ export default function App() {
               forkingTurnId={isDraftThread ? null : codex.forkingTurnId}
               hasMoreMessages={isDraftThread ? false : codex.hasMoreMessages}
               isLoadingPickerData={codex.isLoadingPickerData}
+              isModelCatalogLoaded={codex.hasLoadedModelCatalog}
+              selectedModelUnavailable={codex.selectedModelUnavailable}
               isDraft={isDraftThread}
               isLoading={isDraftThread ? false : codex.isOpeningThread}
               isLoadingMore={codex.isLoadingMore}
@@ -158,7 +178,16 @@ export default function App() {
     <SafeAreaProvider>
       <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
         <StatusBar style="dark" />
-        <HomeTabs activeTab={activeTab} codex={codex} onCreateThread={startDraftThread} onOpenThread={openThread} onTabChange={setActiveTab} />
+        <AppUpdatePrompt controller={appUpdater} />
+        <HomeTabs
+          activeTab={activeTab}
+          codex={codex}
+          isCheckingForUpdate={appUpdater.isCheckingForUpdate}
+          onCheckForUpdates={() => void handleCheckForUpdates()}
+          onCreateThread={startDraftThread}
+          onOpenThread={openThread}
+          onTabChange={setActiveTab}
+        />
       </SafeAreaView>
     </SafeAreaProvider>
   );

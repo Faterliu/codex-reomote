@@ -1,4 +1,4 @@
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ApprovalBanner } from "@/components/ApprovalBanner";
 import { ConnectionPanel } from "@/components/ConnectionPanel";
@@ -16,9 +16,11 @@ type Props = {
   onCreateThread: () => void;
   onOpenThread: (thread: Thread) => void;
   onTabChange: (tab: RootTab) => void;
+  onCheckForUpdates: () => void;
+  isCheckingForUpdate: boolean;
 };
 
-export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTabChange }: Props) {
+export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTabChange, onCheckForUpdates, isCheckingForUpdate }: Props) {
   return (
     <View style={styles.shell}>
       <View style={styles.header}>
@@ -26,7 +28,20 @@ export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTab
           <Text style={styles.title}>Codex</Text>
           <Text style={styles.subtitle}>{activeTab === "connection" ? "连接管理" : "会话"}</Text>
         </View>
-        <Text style={[styles.headerBadge, codex.state === "connected" && styles.headerBadgeConnected]}>{codex.state}</Text>
+        <View style={styles.headerActions}>
+          {Platform.OS === "android" ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={isCheckingForUpdate}
+              onPress={onCheckForUpdates}
+              style={[styles.updateCheckButton, isCheckingForUpdate && styles.updateCheckButtonDisabled]}
+            >
+              {isCheckingForUpdate ? <ActivityIndicator color="#2454d6" size="small" /> : null}
+              <Text style={styles.updateCheckButtonText}>{isCheckingForUpdate ? "检查中…" : "检查更新"}</Text>
+            </Pressable>
+          ) : null}
+          <Text style={[styles.headerBadge, codex.state === "connected" && styles.headerBadgeConnected]}>{codex.state}</Text>
+        </View>
       </View>
 
       <ScrollView
@@ -101,6 +116,28 @@ const styles = StyleSheet.create({
     color: "#516071",
     fontSize: 14,
     lineHeight: 20,
+  },
+  headerActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  updateCheckButton: {
+    alignItems: "center",
+    backgroundColor: "#edf3ff",
+    borderRadius: 999,
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 32,
+    paddingHorizontal: 10,
+  },
+  updateCheckButtonDisabled: {
+    opacity: 0.65,
+  },
+  updateCheckButtonText: {
+    color: "#2454d6",
+    fontSize: 12,
+    fontWeight: "800",
   },
   headerBadge: {
     backgroundColor: "#edf1f7",

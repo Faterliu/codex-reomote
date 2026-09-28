@@ -1,9 +1,9 @@
 ﻿<#
 .SYNOPSIS
-    停止本机手机链路的监控器、App Server、Relay、Cloudflare Tunnel 和 SSH 反向隧道。
+    停止本机手机链路的监控器、App Server、Relay 和 SSH 反向隧道。
 
 .DESCRIPTION
-    只关闭本脚本组使用的本机进程，不关闭远程服务器上的 cloudflared。
+    只关闭本脚本组使用的本机进程。
 #>
 
 [CmdletBinding()]
@@ -17,7 +17,8 @@ Set-StrictMode -Version Latest
 
 $RuntimeRoot = Join-Path $env:LOCALAPPDATA "CodexMobilePhoneTunnel"
 $WatcherPidFile = Join-Path $RuntimeRoot "watcher.pid"
-$LocalCloudflaredPidFile = Join-Path $RuntimeRoot "local-cloudflared.pid"
+$WatcherTaskName = "CodexMobilePhoneTunnelMonitor"
+$StartScriptPath = Join-Path $PSScriptRoot "start-phone-tunnel.ps1"
 $NetstatCommand = Join-Path $env:SystemRoot "System32\netstat.exe"
 
 function Get-ListenerPids {
@@ -43,31 +44,29 @@ function Stop-LocalProcess {
 }
 
 # 先关闭监控器，防止它在清理期间自动重新拉起服务。
+if (Get-ScheduledTask -TaskName $WatcherTaskName -ErrorAction SilentlyContinue) {
+  Stop-ScheduledTask -TaskName $WatcherTaskName -ErrorAction SilentlyContinue
+  Write-Host "Stopped scheduled task $WatcherTaskName."
+}
+
 if (Test-Path -LiteralPath $WatcherPidFile) {
   $watcherText = (Get-Content -LiteralPath $WatcherPidFile -Raw -ErrorAction SilentlyContinue).Trim()
   if ($watcherText -match '^\d+$') {
-    Stop-LocalProcess -ProcessId ([int]$watcherText) -Description "phone tunnel watcher"
+    $watcherProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$watcherText" -ErrorAction SilentlyContinue
+    if ($watcherProcess -and $watcherProcess.Name -in @("powershell.exe", "pwsh.exe") -and $watcherProcess.CommandLine -and $watcherProcess.CommandLine.Contains($StartScriptPath)) {
+      Stop-LocalProcess -ProcessId ([int]$watcherText) -Description "phone tunnel watcher"
+    }
   }
   Remove-Item -LiteralPath $WatcherPidFile -Force -ErrorAction SilentlyContinue
 }
 
-# 本机 Cloudflare fallback 不监听固定端口，只按启动时记录的 PID 精确清理。
-if (Test-Path -LiteralPath $LocalCloudflaredPidFile) {
-  $cloudflaredText = (Get-Content -LiteralPath $LocalCloudflaredPidFile -Raw -ErrorAction SilentlyContinue).Trim()
-  if ($cloudflaredText -match '^\d+$') {
-    Stop-LocalProcess -ProcessId ([int]$cloudflaredText) -Description "local Cloudflare tunnel"
-  }
-  Remove-Item -LiteralPath $LocalCloudflaredPidFile -Force -ErrorAction SilentlyContinue
-}
-
-# 兼容升级前启动、尚未生成 watcher.pid 的旧监控进程。
-$startScriptPath = Join-Path $PSScriptRoot "start-phone-tunnel.ps1"
+# 按脚本路径兜底查找监控器，处理 PID 文件过期或计划任务停止不及时的情况。
 $legacyWatchers = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
   Where-Object {
     $_.ProcessId -ne $PID -and
     $_.Name -in @("powershell.exe", "pwsh.exe") -and
     $_.CommandLine -and
-    $_.CommandLine.Contains($startScriptPath) -and
+    $_.CommandLine.Contains($StartScriptPath) -and
     -not $_.CommandLine.Contains("-Once")
   }
 foreach ($legacyWatcher in $legacyWatchers) {
@@ -90,4 +89,4 @@ foreach ($sshProcess in $sshProcesses) {
   Stop-LocalProcess -ProcessId ([int]$sshProcess.ProcessId) -Description "SSH reverse tunnel"
 }
 
-Write-Host "Phone tunnel processes have been stopped. Remote cloudflared was left running."
+Write-Host "Phone tunnel processes and monitor task have been stopped. Remote server processes were left untouched."

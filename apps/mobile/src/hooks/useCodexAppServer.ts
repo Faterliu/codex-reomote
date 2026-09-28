@@ -111,6 +111,7 @@ export function useCodexAppServer() {
   const [isInterruptingTurn, setIsInterruptingTurn] = useState(false);
   const [forkingTurnId, setForkingTurnId] = useState<string | null>(null);
   const [isLoadingPickerData, setIsLoadingPickerData] = useState(false);
+  const [hasLoadedModelCatalog, setHasLoadedModelCatalog] = useState(false);
   const [olderTurnsCursor, setOlderTurnsCursor] = useState<string | null>(null);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
@@ -123,6 +124,7 @@ export function useCodexAppServer() {
     skills: [],
     plugins: [],
   });
+  const selectedModelUnavailable = hasLoadedModelCatalog && Boolean(selectedModelId) && !pickerData.models.some((model) => model.model === selectedModelId);
   const [pendingEntries, setPendingEntries] = useState<PendingEntry[]>([]);
   const [recentError, setRecentError] = useState<string | null>(null);
   const [imageCacheVersion, setImageCacheVersion] = useState(0);
@@ -248,6 +250,7 @@ export function useCodexAppServer() {
 
   useEffect(() => {
     if (state !== "connected") {
+      setHasLoadedModelCatalog(false);
       return;
     }
 
@@ -308,6 +311,7 @@ export function useCodexAppServer() {
   const connect = (url: string, token = "") => {
     setReadiness(null);
     setRecentError(null);
+    setHasLoadedModelCatalog(false);
     clearReconnectTimer(reconnectTimerRef);
     manualDisconnectRef.current = false;
     reconnectAttemptRef.current = 0;
@@ -633,6 +637,10 @@ export function useCodexAppServer() {
     images: ComposerImageAttachment[] = [],
     clientUserMessageId?: string,
   ) => {
+    if (isSelectedModelUnavailable()) {
+      throw new Error(getUnavailableModelMessage());
+    }
+
     const resumedThread = await ensureThreadResumed(client, thread);
     const uploadedImagePaths = await uploadComposerImages(client, resumedThread.cwd, images);
     const input = buildTurnInput(text, mentions, uploadedImagePaths);
@@ -747,6 +755,11 @@ export function useCodexAppServer() {
       return;
     }
 
+    if (isSelectedModelUnavailable()) {
+      setRecentError(getUnavailableModelMessage());
+      return;
+    }
+
     setIsCreatingThread(true);
     setRecentError(null);
     let pendingId: string | null = null;
@@ -809,6 +822,8 @@ export function useCodexAppServer() {
         return;
       }
 
+      setHasLoadedModelCatalog(true);
+
       const permissionProfiles = permissionProfilesResult.status === "fulfilled" ? permissionProfilesResult.value : [];
       const skills = skillsResult.status === "fulfilled" ? skillsResult.value : [];
       const plugins = pluginsResult.status === "fulfilled" ? pluginsResult.value : [];
@@ -844,6 +859,14 @@ export function useCodexAppServer() {
       setIsLoadingPickerData(false);
     }
   };
+
+  const isSelectedModelUnavailable = () =>
+    Boolean(selectedModelId) && (!hasLoadedModelCatalog || !pickerData.models.some((model) => model.model === selectedModelId));
+
+  const getUnavailableModelMessage = () =>
+    hasLoadedModelCatalog
+      ? `当前会话的模型“${selectedModelId}”不在本机 Codex App Server 当前返回的可选模型列表中。请刷新模型列表并选择列表内的模型后再发送。`
+      : "正在同步本机 Codex App Server 的可选模型列表，请同步完成后再发送。";
 
   const renameThread = async (name: string) => {
     const trimmed = name.trim();
@@ -1102,6 +1125,8 @@ export function useCodexAppServer() {
     isCreatingThread,
     isInterruptingTurn,
     isLoadingPickerData,
+    hasLoadedModelCatalog,
+    selectedModelUnavailable,
     selectedModelId,
     selectedReasoningEffort,
     selectedPermissionModeId,

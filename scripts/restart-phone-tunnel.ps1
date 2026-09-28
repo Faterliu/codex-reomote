@@ -15,7 +15,8 @@
 [CmdletBinding()]
 param(
   [string]$ServerHost = "8.148.73.94",
-  [string]$ServerUser = "root",
+  [string]$ServerUser = "admin",
+  [string]$PublicUrl = "wss://codex.yinxingye.space",
   [int]$AppServerPort = 4500,
   [int]$RelayPort = 4501
 )
@@ -55,7 +56,8 @@ function Wait-ForPortState {
 
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   do {
-    $isListening = (Get-AppServerListenerPids -Port $Port).Count -gt 0
+    $listenerPids = @(Get-AppServerListenerPids -Port $Port)
+    $isListening = $listenerPids.Count -gt 0
     if ($isListening -eq $ShouldBeListening) {
       return
     }
@@ -66,7 +68,7 @@ function Wait-ForPortState {
   throw "Timed out waiting for 127.0.0.1:$Port to $expectedState."
 }
 
-$listenerPids = Get-AppServerListenerPids -Port $AppServerPort
+$listenerPids = @(Get-AppServerListenerPids -Port $AppServerPort)
 if ($listenerPids.Count -eq 0) {
   Write-Host "Codex App Server is not listening on 127.0.0.1:$AppServerPort; starting a fresh instance."
 } else {
@@ -83,6 +85,6 @@ if ($listenerPids.Count -eq 0) {
 }
 
 Write-Host "Starting the local phone tunnel services..."
-& $StartScript -ServerHost $ServerHost -ServerUser $ServerUser -AppServerPort $AppServerPort -RelayPort $RelayPort -Once
+& $StartScript -ServerHost $ServerHost -ServerUser $ServerUser -PublicUrl $PublicUrl -AppServerPort $AppServerPort -RelayPort $RelayPort -Once
 
 Write-Host "Restart complete. Reconnect the phone app, then open the affected task again."

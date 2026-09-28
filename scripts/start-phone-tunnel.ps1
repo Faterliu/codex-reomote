@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [string]$ServerHost = "8.148.73.94",
-  [string]$ServerUser = "root",
+  [string]$ServerUser = "admin",
+  [string]$PublicUrl = "wss://codex.yinxingye.space",
   [ValidateRange(1,65535)][int]$AppServerPort = 4500,
   [ValidateRange(1,65535)][int]$RelayPort = 4501,
   [switch]$Once,
@@ -20,6 +21,7 @@ $NodeCommand = (Get-Command node -ErrorAction Stop).Source
 $SshCommand = Join-Path $env:SystemRoot "System32\OpenSSH\ssh.exe"
 $RuntimeRoot = Join-Path $env:LOCALAPPDATA "CodexMobilePhoneTunnel"
 $LogRoot = Join-Path $RuntimeRoot "logs"
+$WatcherLogFile = Join-Path $LogRoot "watcher.log"
 $WatcherPidFile = Join-Path $RuntimeRoot "watcher.pid"
 $RunId = Get-Date -Format "yyyyMMdd-HHmmss"
 $RemoteTarget = "$ServerUser@$ServerHost"
@@ -39,6 +41,12 @@ foreach ($requiredPath in @(
 }
 
 New-Item -ItemType Directory -Force -Path $LogRoot | Out-Null
+
+function Write-WatcherLog {
+  param([string]$Message)
+
+  Add-Content -LiteralPath $WatcherLogFile -Value "$(Get-Date -Format o) $Message" -Encoding utf8
+}
 
 function Test-TcpPort {
   param([int]$Port)
@@ -86,30 +94,22 @@ function Invoke-RemoteReady {
   }
 }
 
-function Get-RemoteQuickTunnelUrl {
-  try {
-    $url = & $SshCommand -F NUL -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 $RemoteTarget "grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' /tmp/codex-mobile-cloudflared.log 2>/dev/null | grep -v '^https://api\.trycloudflare\.com$' | tail -n 1" 2>$null
-    if ($LASTEXITCODE -eq 0 -and $url) {
-      return ($url | Select-Object -Last 1).Trim() -replace "^https://", "wss://"
-    }
-  } catch {
-    return $null
-  }
-
-  return $null
-}
-
 function Test-PublicWebSocket {
-  param([string]$PublicUrl)
+  param([string]$TargetUrl)
 
-  if (-not $PublicUrl) { return $false }
+  try {
+    $parsedUrl = [Uri]$TargetUrl
+    if (-not $parsedUrl.IsAbsoluteUri -or $parsedUrl.Scheme -ne "wss") { return $false }
+  } catch {
+    return $false
+  }
 
   $socket = [System.Net.WebSockets.ClientWebSocket]::new()
   $timeout = [System.Threading.CancellationTokenSource]::new()
   try {
     $relayToken = (Get-Content -LiteralPath $RelayTokenFile -Raw).Trim()
-    $separator = if ($PublicUrl.Contains('?')) { '&' } else { '?' }
-    $uri = [Uri]("$PublicUrl${separator}relay_token=$([Uri]::EscapeDataString($relayToken))")
+    $separator = if ($TargetUrl.Contains('?')) { '&' } else { '?' }
+    $uri = [Uri]("$TargetUrl${separator}relay_token=$([Uri]::EscapeDataString($relayToken))")
     $timeout.CancelAfter(10000)
     $socket.ConnectAsync($uri, $timeout.Token).GetAwaiter().GetResult()
     return $socket.State -eq [System.Net.WebSockets.WebSocketState]::Open
@@ -126,7 +126,7 @@ function Invoke-PhoneRepair {
   $repairLock = New-Object System.Threading.Mutex($false, "Global\CodexPhoneRepair-$AppServerPort-$RelayPort")
   $locked = $false
   try {
-    try { $locked = $repairLock.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $locked = $true }
+    try { $locked = $repairLock.WaitOne([TimeSpan]::Zero) } catch [System.Threading.AbandonedMutexException] { $locked = $true }
     if (-not $locked) { Write-Host 'Another repair is running; skipping.'; return }
     $RunId = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $started = [ordered]@{
@@ -204,28 +204,22 @@ if (-not (Invoke-RemoteReady)) {
   Write-Host "Server-side Relay is already healthy; reusing the existing reverse tunnel."
 }
 
-$publicUrl = Get-RemoteQuickTunnelUrl
-if (-not $publicUrl) {
-  throw "Remote Cloudflare Quick Tunnel has no current public URL. Check /tmp/codex-mobile-cloudflared.log on $RemoteTarget."
-}
-if (-not (Test-PublicWebSocket -PublicUrl $publicUrl)) {
-  throw "Public WebSocket health check failed for $publicUrl. The Cloudflare connector or Quick Tunnel address is unavailable."
+if (-not (Test-PublicWebSocket -TargetUrl $PublicUrl)) {
+  throw "Public WebSocket health check failed for $PublicUrl. Check the HTTPS reverse proxy, SSH reverse tunnel, Relay, and relay token."
 }
 $state = [ordered]@{
   startedAt = (Get-Date).ToString("o")
   server = $RemoteTarget
   appServerPort = $AppServerPort
   relayPort = $RelayPort
-  publicUrl = $publicUrl
+  publicUrl = $PublicUrl
   started = $started
   logs = $LogRoot
 }
 $state | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $RuntimeRoot "last-start.json") -Encoding utf8
 
 Write-Host "Local phone tunnel is ready."
-if ($publicUrl) {
-  Write-Host "Mobile URL: $publicUrl"
-}
+Write-Host "Mobile URL: $PublicUrl"
 Write-Host "Relay token remains in: $RelayTokenFile"
 Write-Host "Logs: $LogRoot"
   } finally {
@@ -240,27 +234,44 @@ if ($Once) { Invoke-PhoneRepair; return }
 $watchLock = New-Object System.Threading.Mutex($false, "Global\CodexPhoneWatch-$AppServerPort-$RelayPort")
 $watchLocked = $false
 try {
-  try { $watchLocked = $watchLock.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $watchLocked = $true }
-  if (-not $watchLocked) { Write-Host 'Phone tunnel watcher is already running.'; return }
+  Write-WatcherLog "Watcher process $PID starting."
+  try { $watchLocked = $watchLock.WaitOne([TimeSpan]::Zero) } catch [System.Threading.AbandonedMutexException] { $watchLocked = $true }
+  if (-not $watchLocked) {
+    Write-WatcherLog "Watcher process $PID found another active watcher and is exiting."
+    Write-Host 'Phone tunnel watcher is already running.'
+    return
+  }
   $PID | Set-Content -LiteralPath $WatcherPidFile -Encoding ascii
+  Write-WatcherLog "Watcher process $PID acquired its lock and wrote its PID file."
   try { Invoke-PhoneRepair } catch { Write-Warning $_.Exception.Message }
   Write-Host "Watching every $CheckIntervalSeconds seconds. Keep this process running; Ctrl+C stops monitoring."
   $failures = 0
   while ($true) {
     Start-Sleep -Seconds $CheckIntervalSeconds
-    $publicUrl = Get-RemoteQuickTunnelUrl
-    if ((Test-TcpPort -Port $AppServerPort) -and (Test-RelayReady) -and (Invoke-RemoteReady) -and (Test-PublicWebSocket -PublicUrl $publicUrl)) {
-      if ($failures -gt 0) { Write-Host "$(Get-Date -Format s) Connection recovered." }
+    if ((Test-TcpPort -Port $AppServerPort) -and (Test-RelayReady) -and (Invoke-RemoteReady) -and (Test-PublicWebSocket -TargetUrl $PublicUrl)) {
+      if ($failures -gt 0) {
+        Write-WatcherLog "Connection recovered after $failures failed health checks."
+        Write-Host "$(Get-Date -Format s) Connection recovered."
+      }
       $failures = 0
       continue
     }
     $failures++
+    Write-WatcherLog "Health check failed ($failures/2)."
     Write-Warning "$(Get-Date -Format s) Health check failed ($failures/2)."
     if ($failures -ge 2) {
-      try { Invoke-PhoneRepair } catch { Write-Warning $_.Exception.Message }
+      try {
+        Invoke-PhoneRepair
+      } catch {
+        Write-WatcherLog "Automatic repair failed: $($_.Exception.Message)"
+        Write-Warning $_.Exception.Message
+      }
       $failures = 0
     }
   }
+} catch {
+  Write-WatcherLog "Watcher process $PID stopped on error: $($_.Exception.Message)"
+  throw
 } finally {
   if (Test-Path -LiteralPath $WatcherPidFile) {
     $recordedPid = (Get-Content -LiteralPath $WatcherPidFile -Raw -ErrorAction SilentlyContinue).Trim()

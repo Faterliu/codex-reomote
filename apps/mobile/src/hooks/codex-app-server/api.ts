@@ -1,4 +1,5 @@
 import type {
+  Model,
   ModelListResponse,
   ModelListParams,
   PermissionProfileListParams,
@@ -195,13 +196,30 @@ function dedupeThreadsById(threads: Thread[]) {
 }
 
 export async function loadModels(client: JsonRpcClient) {
-  const params: ModelListParams = {
-    limit: 50,
-    includeHidden: false,
-  };
-  const response = await client.request<ModelListResponse>("model/list", params);
+  const models: Model[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
 
-  return response.data;
+  do {
+    const params: ModelListParams = {
+      cursor,
+      limit: 50,
+      includeHidden: false,
+    };
+    const response = await client.request<ModelListResponse>("model/list", params);
+    models.push(...response.data);
+
+    cursor = response.nextCursor;
+    if (cursor && seenCursors.has(cursor)) {
+      // 防止异常服务端重复返回 cursor 导致目录刷新陷入死循环。
+      break;
+    }
+    if (cursor) {
+      seenCursors.add(cursor);
+    }
+  } while (cursor);
+
+  return models;
 }
 
 export async function loadAccountRateLimits(client: JsonRpcClient) {

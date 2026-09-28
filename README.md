@@ -9,6 +9,9 @@ powershell -ExecutionPolicy Bypass -File C:\file\app-codexapp\scripts\start-phon
 重启
 powershell -ExecutionPolicy Bypass -File C:\file\app-codexapp\scripts\restart-phone-tunnel.ps1
 
+本地http
+& 'C:\Program Files (x86)\cloudflared\cloudflared.exe' tunnel --protocol http2 --url http://127.0.0.1:4501
+
 ## 预览
 
 <p>
@@ -177,3 +180,6 @@ MIT
 [v1.0.1] 20260914
 1. 增加新分支功能。
 2. 增加服务端 QUIC 传输频繁超时提示显示。
+
+[v1.0.2] 20260928
+1. 增加更新检测功能
