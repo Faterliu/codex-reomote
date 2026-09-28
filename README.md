@@ -3,14 +3,18 @@
 原作者：https://github.com/vjzning/app-codexapp
 
 Codex App Server 移动端客户端。它把手机 App 当作一个 Codex UI surface，连接你显式启动的 `codex app-server`，用于查看会话、继续发送消息、接收事件和处理审批。
-启动
+# 指令
+## 启动脚本
 powershell -ExecutionPolicy Bypass -File C:\file\app-codexapp\scripts\start-phone-tunnel.ps1
 
-重启
+## 重启脚本
 powershell -ExecutionPolicy Bypass -File C:\file\app-codexapp\scripts\restart-phone-tunnel.ps1
 
-本地http
+## 本地cloudflared通道
 & 'C:\Program Files (x86)\cloudflared\cloudflared.exe' tunnel --protocol http2 --url http://127.0.0.1:4501
+
+## 显式指定新版本和 UTF-8 更新记录，然后打包、校验、上传并发布。
+pnpm release:android -Version 1.0.3 -VersionCode 4 -ChangelogFile .\release-notes.txt
 
 ## 预览
 

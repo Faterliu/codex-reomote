@@ -43,76 +43,21 @@ pnpm protocol:generate
 - Android SDK：`C:\Users\liuzhuo\AppData\Local\Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\CodexAndroidBuild\android-sdk`
 - SDK 已包含 Android 36、Build Tools 36.0.0、NDK 27.1 和 CMake 3.22.1。
 
-Windows 下直接在本仓库编译会触发 CMake 长路径错误。先把最新源码复制到 `C:\a`，排除 `.git`、`node_modules` 和旧的 `apps\mobile\android`，再执行：
+当前使用仓库根目录 `.npmrc` 中的 `node-linker=hoisted`，原地构建，不复制到 `C:\a`。
+自动更新脚本：`scripts/release-android.ps1`，用法见 `docs/android-app-updates.md`。
 
 ```powershell
-$BuildRoot = 'C:\Users\liuzhuo\AppData\Local\Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\CodexAndroidBuild'
-$env:JAVA_HOME = "$BuildRoot\jdk\jdk-17.0.20.1+1"
-$env:ANDROID_HOME = "$BuildRoot\android-sdk"
-$env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
-$env:NODE_ENV = 'production'
+# 只读预检，不安装依赖、不编译、不上传。
+pnpm release:android -CheckOnly
 
-cd C:\a
-pnpm install --frozen-lockfile --node-linker=hoisted
-cd apps\mobile
-C:\a\node_modules\.bin\expo.cmd prebuild --clean --platform android --no-install
-cd android
-.\gradlew.bat assembleRelease --no-daemon
+# 显式指定新版本和 UTF-8 更新记录，然后打包、校验、上传并发布。
+pnpm release:android -Version 1.0.3 -VersionCode 4 -ChangelogFile .\release-notes.txt
 ```
 
-产物位于 `C:\a\apps\mobile\android\app\build\outputs\apk\release\app-release.apk`。
-
-### 在受限沙箱里构建（workbuddy实测可用）
-
-上面那段 PowerShell 流程在部分 agent 运行环境里**跑不通**：Bash 的 PATH 缺 `/usr/bin`（`ls`/`tr` 都找不到），
-从 Bash 调 `cmd.exe` 会被沙箱拦截（所以 `gradlew.bat` 不可用），PowerShell 工具也可能不回传 stdout。
-实测可用的等价路径是全程走 Bash + Gradle 自带的 POSIX wrapper：
-
-```bash
-export PATH="/usr/bin:/bin:/c/Windows/System32:$PATH"
-export MSYS2_ARG_CONV_EXCL='*'   # 否则 robocopy 的 /E /XD 会被 MSYS 当路径转换
-
-# 1. 同步源码到 C:\a（排除 android，让 prebuild 重新生成）
-Robocopy.exe "C:\file\app-codexapp" "C:\a" /E \
-  /XD .git node_modules dist build-logs android .pnpm-store .deep-copilot .workbuddy /NFL /NDL /NP
-
-# 2. 安装依赖
-cd /c/a && pnpm install --frozen-lockfile --node-linker=hoisted
-
-# 3. 生成原生工程
-cd /c/a/apps/mobile && NODE_ENV=production /c/a/node_modules/.bin/expo.CMD prebuild --platform android --no-install
-
-# 4. 手写 android/local.properties（prebuild 不会生成）
-#    sdk.dir=C\:\\Users\\liuzhuo\\AppData\\Local\\Packages\\OpenAI.Codex_2p2nqsd0c76g0\\LocalCache\\Local\\CodexAndroidBuild\\android-sdk
-
-# 5. 编译（JAVA_HOME 必须是 POSIX 风格路径）
-JDK="/c/Users/liuzhuo/AppData/Local/Packages/OpenAI.Codex_2p2nqsd0c76g0/LocalCache/Local/CodexAndroidBuild/jdk/jdk-17.0.20.1+1"
-export JAVA_HOME="$JDK"
-export ANDROID_HOME="C:\\Users\\liuzhuo\\AppData\\Local\\Packages\\OpenAI.Codex_2p2nqsd0c76g0\\LocalCache\\Local\\CodexAndroidBuild\\android-sdk"
-export ANDROID_SDK_ROOT="$ANDROID_HOME"
-export NODE_ENV=production
-export PATH="$JDK/bin:$PATH"
-cd /c/a/apps/mobile/android && bash ./gradlew assembleRelease --no-daemon
-```
-
-坑位速查：
-
-| 现象 | 处理 |
-|---|---|
-| `ls: command not found` | `export PATH="/usr/bin:/bin:/c/Windows/System32:$PATH"` |
-| `Invoking cmd.exe from Bash ... blocked` | 别用 `.bat`/`.cmd`，改用 POSIX wrapper `bash ./gradlew` |
-| `gradlew` 找不到 java | `JAVA_HOME` 用 `/c/Users/...`，Windows 反斜杠风格不生效 |
-| robocopy 报参数错误 | `export MSYS2_ARG_CONV_EXCL='*'` |
-| prebuild 长时间无输出 | 见下 |
-
-**`expo prebuild --clean` 会偶发卡死**：停滞十分钟零文件写入，`C:\a\apps\mobile\android` 处于半清理状态
-（残留上一次构建的 `.gradle`/`.kotlin`/`local.properties`，却缺少刚生成的 `gradle/wrapper/`）——
-`--clean` 的删除步骤被沙箱部分拦截。处置：停掉任务 → `rm -rf` 清空该目录 → **不带 `--clean`** 重跑
-（目录本已为空，两者等价），几秒即完成。
-
-排查卡死不要只看进程状态，直接看目录时间戳：
-`find /c/a/apps/mobile/android -maxdepth 2 -printf "%T+ %p\n" | sort -r | head`。
-另外 `| tail -N` 会缓冲到进程结束才输出，排查时改用 `| tee <log>` 边跑边看。
+脚本自动配置 JDK/SDK、安装锁定依赖、运行 typecheck、同步 Expo 原生配置，再执行 Gradle。
+不使用 `prebuild --clean`，以保留现有签名文件；发布前比较线上 APK 的签名证书。
+2026-09-28 已通过 Windows PowerShell 5.1 在原工作区完成 1.0.3（versionCode 4）的打包、上传和公网 SHA-256 校验。如果构建报错，脚本立即停止，不更新服务器清单。
+不要把旧 `.pnpm` 布局的 `.cxx`、autolinking 或 Gradle 缓存复制回来。
 
 ### 产物校验与归档
 

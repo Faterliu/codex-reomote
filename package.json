@@ -10,6 +10,7 @@
   "private": true,
   "packageManager": "pnpm@9.15.2",
   "scripts": {
+    "release:android": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release-android.ps1",
     "mobile": "pnpm --filter mobile start",
     "mobile:ios": "pnpm --filter mobile ios",
     "mobile:android": "pnpm --filter mobile android",
