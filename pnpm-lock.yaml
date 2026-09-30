@@ -38,6 +38,9 @@ importers:
       expo-image-picker:
         specifier: ~56.0.15
         version: 56.0.15(expo@56.0.5)
+      expo-screen-orientation:
+        specifier: ~56.0.5
+        version: 56.0.5(expo@56.0.5)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.15)(react@19.2.3))
       expo-secure-store:
         specifier: ~56.0.4
         version: 56.0.4(expo@56.0.5)
@@ -1186,6 +1189,12 @@ packages:
   expo-modules-jsi@56.0.7:
     resolution: {integrity: sha512-iBAj4Xeh/8HT201VVxFlmf+VBfmtQV1ZUoJdLQQENm0+j9gnD2QswZLJyNo3CmNNXl46esJeLR5lpGpYZts/zA==}
     peerDependencies:
+      react-native: '*'
+
+  expo-screen-orientation@56.0.5:
+    resolution: {integrity: sha512-Puf4L/cgM8z45Z2fwZzJtlVGSk0ZM/l3gBqXm50bKTACmUk8P8fr7HVbDfs8reyoZuEKKFZJ0VlnKo5i6cSotQ==}
+    peerDependencies:
+      expo: '*'
       react-native: '*'
 
   expo-secure-store@56.0.4:
@@ -3650,6 +3659,11 @@ snapshots:
 
   expo-modules-jsi@56.0.7(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.15)(react@19.2.3)):
     dependencies:
+      react-native: 0.85.3(@babel/core@7.29.7)(@types/react@19.2.15)(react@19.2.3)
+
+  expo-screen-orientation@56.0.5(expo@56.0.5)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.15)(react@19.2.3)):
+    dependencies:
+      expo: 56.0.5(@babel/core@7.29.7)(@expo/dom-webview@56.0.5)(react-native@0.85.3(@babel/core@7.29.7)(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       react-native: 0.85.3(@babel/core@7.29.7)(@types/react@19.2.15)(react@19.2.3)
 
   expo-secure-store@56.0.4(expo@56.0.5):

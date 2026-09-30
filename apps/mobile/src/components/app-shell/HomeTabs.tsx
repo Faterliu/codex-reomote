@@ -1,10 +1,13 @@
 import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ApprovalBanner } from "@/components/ApprovalBanner";
+import { AutoRotateSettings } from "@/components/app-shell/AutoRotateSettings";
+import { ChatGptWebPanel } from "@/components/app-shell/ChatGptWebPanel";
 import { ConnectionPanel } from "@/components/ConnectionPanel";
 import { EventLog } from "@/components/EventLog";
 import { ThreadList } from "@/components/ThreadList";
 import { UserInputRequestCard } from "@/components/user-input/UserInputRequestCard";
+import type { AutoRotateSettingController } from "@/hooks/useAutoRotateSetting";
 import type { CodexAppServerState } from "@/hooks/useCodexAppServer";
 import type { Thread } from "@codex-mobile/protocol/v2";
 
@@ -18,15 +21,16 @@ type Props = {
   onTabChange: (tab: RootTab) => void;
   onCheckForUpdates: () => void;
   isCheckingForUpdate: boolean;
+  autoRotateSetting: AutoRotateSettingController;
 };
 
-export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTabChange, onCheckForUpdates, isCheckingForUpdate }: Props) {
+export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTabChange, onCheckForUpdates, isCheckingForUpdate, autoRotateSetting }: Props) {
   return (
     <View style={styles.shell}>
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Codex</Text>
-          <Text style={styles.subtitle}>{activeTab === "connection" ? "连接管理" : "会话"}</Text>
+          <Text style={styles.subtitle}>{activeTab === "connection" ? "连接管理" : activeTab === "threads" ? "会话" : "ChatGPT 网页"}</Text>
         </View>
         <View style={styles.headerActions}>
           {Platform.OS === "android" ? (
@@ -40,7 +44,9 @@ export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTab
               <Text style={styles.updateCheckButtonText}>{isCheckingForUpdate ? "检查中…" : "检查更新"}</Text>
             </Pressable>
           ) : null}
-          <Text style={[styles.headerBadge, codex.state === "connected" && styles.headerBadgeConnected]}>{codex.state}</Text>
+          {activeTab !== "chatgpt" ? (
+            <Text style={[styles.headerBadge, codex.state === "connected" && styles.headerBadgeConnected]}>{codex.state}</Text>
+          ) : null}
         </View>
       </View>
 
@@ -62,11 +68,12 @@ export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTab
               onDisconnect={codex.disconnect}
               onProbe={codex.probeReadiness}
             />
+            <AutoRotateSettings setting={autoRotateSetting} />
             <ApprovalBanner approval={codex.approval} compact onResolve={codex.resolveApproval} />
             <UserInputRequestCard compact request={codex.userInputRequest} onSubmit={codex.resolveUserInputRequest} />
             <EventLog events={codex.events} logs={codex.logs} />
           </>
-        ) : (
+        ) : activeTab === "threads" ? (
           <>
             <ApprovalBanner approval={codex.approval} compact onResolve={codex.resolveApproval} />
             <UserInputRequestCard compact request={codex.userInputRequest} onSubmit={codex.resolveUserInputRequest} />
@@ -82,6 +89,8 @@ export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTab
               threads={codex.displayedThreads}
             />
           </>
+        ) : (
+          <ChatGptWebPanel />
         )}
       </ScrollView>
 

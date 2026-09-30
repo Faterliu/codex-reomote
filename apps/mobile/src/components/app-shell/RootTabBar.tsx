@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-export type RootTab = "connection" | "threads";
+export type RootTab = "connection" | "threads" | "chatgpt";
 
 type Props = {
   activeTab: RootTab;
@@ -25,6 +25,13 @@ export function RootTabBar({ activeTab, onChange }: Props) {
         label="会话"
         onPress={() => onChange("threads")}
       />
+      <TabButton
+        active={activeTab === "chatgpt"}
+        activeIcon="globe"
+        icon="globe-outline"
+        label="ChatGPT"
+        onPress={() => onChange("chatgpt")}
+      />
     </View>
   );
 }
@@ -37,8 +44,8 @@ function TabButton({
   onPress,
 }: {
   active: boolean;
-  activeIcon: "link" | "chatbubbles";
-  icon: "link-outline" | "chatbubbles-outline";
+  activeIcon: "link" | "chatbubbles" | "globe";
+  icon: "link-outline" | "chatbubbles-outline" | "globe-outline";
   label: string;
   onPress: () => void;
 }) {

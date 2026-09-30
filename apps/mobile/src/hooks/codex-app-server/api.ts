@@ -17,6 +17,8 @@ import type {
   ThreadForkResponse,
   ThreadListResponse,
   ThreadListParams,
+  ThreadReadParams,
+  ThreadReadResponse,
   ThreadResumeParams,
   ThreadResumeResponse,
   ThreadSettingsUpdateParams,
@@ -43,6 +45,19 @@ import type { PermissionModeId } from "@/types/permissionMode";
 import { getPermissionMode, getPermissionModeSandboxPolicy, isBuiltInPermissionModeId } from "@/types/permissionMode";
 
 export const DETAIL_TURN_PAGE_SIZE = 4;
+
+// 当前 App Server 的 thread/read 已返回持久化的模型设置，生成协议尚未包含这些字段。
+// 局部补充可选字段以兼容旧版本；不要手改生成文件。
+export type ThreadWithModelSettings = Thread & {
+  model?: string;
+  reasoningEffort?: ThreadResumeResponse["reasoningEffort"];
+};
+
+export async function readThreadMetadata(client: JsonRpcClient, threadId: string) {
+  const params: ThreadReadParams = { threadId, includeTurns: false };
+  const response = await client.request<ThreadReadResponse & { thread: ThreadWithModelSettings }>("thread/read", params);
+  return response.thread;
+}
 
 export async function ensureThreadResumed(client: JsonRpcClient, thread: Thread) {
   const resumed = await resumeThreadWithInitialTurnPage(client, thread);

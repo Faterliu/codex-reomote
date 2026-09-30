@@ -11,6 +11,56 @@ import sys
 import tempfile
 
 ROOT = Path('/var/www/updates/apps/codexapp')
+RETAINED_RELEASE_COUNT = 3
+APK_URL_PREFIX = 'https://updates.yinxingye.space/apps/codexapp/apk/'
+
+
+def prune_release_history():
+    versions_dir = ROOT / 'versions'
+    apk_dir = ROOT / 'apk'
+    releases = []
+
+    for manifest_path in versions_dir.glob('*.json'):
+        version_code_text = manifest_path.stem
+        if not re.fullmatch(r'[0-9]+', version_code_text):
+            continue
+        try:
+            version_code_from_path = int(version_code_text)
+            manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+            version_code = manifest['versionCode']
+            apk_url = manifest['apkUrl']
+        except (OSError, UnicodeError, ValueError, KeyError, TypeError):
+            continue
+
+        if type(version_code) is not int or version_code != version_code_from_path:
+            continue
+        if manifest.get('appId') != 'codexapp' or manifest.get('packageName') != 'com.anonymous.mobile':
+            continue
+        if not isinstance(apk_url, str) or not apk_url.startswith(APK_URL_PREFIX):
+            continue
+
+        apk_name = apk_url[len(APK_URL_PREFIX):]
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*\.apk', apk_name):
+            continue
+        releases.append((version_code, manifest_path, apk_dir / apk_name))
+
+    releases.sort(key=lambda release: release[0], reverse=True)
+    retained = releases[:RETAINED_RELEASE_COUNT]
+    for version_code, manifest_path, apk_path in releases[RETAINED_RELEASE_COUNT:]:
+        # 删除前先删 APK；若 APK 清理失败，版本记录仍可用于下次重试。
+        apk_path.unlink(missing_ok=True)
+        manifest_path.unlink(missing_ok=True)
+        print(f'Removed old release versionCode={version_code}')
+
+    retained_codes = ','.join(str(release[0]) for release in retained)
+    print(f'Retained release versionCodes={retained_codes}')
+
+
+def prune_existing_history():
+    # 单独执行清理时复用发布锁，避免与正在进行的发布互相删除文件。
+    with (ROOT / '.publish.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        prune_release_history()
 
 
 def publish(stage, expected_hash):
@@ -57,6 +107,7 @@ def publish(stage, expected_hash):
             os.link(staged_files[0], apk_path)
             os.link(staged_files[1], version_path)
             os.replace(staged_files[2], ROOT / 'latest.json')
+            prune_release_history()
         finally:
             for temporary in staged_files:
                 temporary.unlink(missing_ok=True)
@@ -64,4 +115,9 @@ def publish(stage, expected_hash):
 
 
 if __name__ == '__main__':
-    publish(Path(sys.argv[1]), sys.argv[2])
+    if len(sys.argv) == 2 and sys.argv[1] == '--prune-history':
+        prune_existing_history()
+    elif len(sys.argv) == 3:
+        publish(Path(sys.argv[1]), sys.argv[2])
+    else:
+        raise SystemExit('Usage: publish-android-release.py <stage> <expected-hash> | --prune-history')

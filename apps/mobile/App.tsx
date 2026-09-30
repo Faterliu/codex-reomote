@@ -7,6 +7,7 @@ import { ThreadDetail } from "@/components/ThreadDetail";
 import { AppUpdatePrompt } from "@/components/app-update/AppUpdatePrompt";
 import { HomeTabs } from "@/components/app-shell/HomeTabs";
 import { loadSavedConnectionConfig } from "@/hooks/codex-app-server/connectionStorage";
+import { useAutoRotateSetting } from "@/hooks/useAutoRotateSetting";
 import type { RootTab } from "@/components/app-shell/RootTabBar";
 import { useCodexAppServer } from "@/hooks/useCodexAppServer";
 import type { Thread } from "@codex-mobile/protocol/v2";
@@ -16,6 +17,7 @@ import { useAppUpdater } from "@/hooks/useAppUpdater";
 export default function App() {
   const codex = useCodexAppServer();
   const appUpdater = useAppUpdater();
+  const autoRotateSetting = useAutoRotateSetting();
   const [activeTab, setActiveTab] = useState<RootTab>("threads");
   const [isDraftThread, setIsDraftThread] = useState(false);
   const [draftCwd, setDraftCwd] = useState("");
@@ -176,7 +178,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
+      <SafeAreaView edges={["top", "right", "bottom", "left"]} style={styles.safeArea}>
         <StatusBar style="dark" />
         <AppUpdatePrompt controller={appUpdater} />
         <HomeTabs
@@ -184,6 +186,7 @@ export default function App() {
           codex={codex}
           isCheckingForUpdate={appUpdater.isCheckingForUpdate}
           onCheckForUpdates={() => void handleCheckForUpdates()}
+          autoRotateSetting={autoRotateSetting}
           onCreateThread={startDraftThread}
           onOpenThread={openThread}
           onTabChange={setActiveTab}

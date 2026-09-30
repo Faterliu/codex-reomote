@@ -4,7 +4,6 @@ import type { ServerNotification } from "@codex-mobile/protocol";
 import type {
   GetAccountRateLimitsResponse,
   Thread,
-  ThreadReadResponse,
   ThreadStartParams,
   ThreadStartResponse,
   ToolRequestUserInputResponse,
@@ -40,6 +39,7 @@ import {
   loadThreads,
   loadTurnPage,
   normalizeConnection,
+  readThreadMetadata,
   resumeThreadWithInitialTurnPage,
   setThreadName,
   startReview,
@@ -47,6 +47,7 @@ import {
   steerTurn,
   updateThreadSettings,
   unarchiveThread,
+  type ThreadWithModelSettings,
 } from "./codex-app-server/api";
 import { buildPendingMessageBody, buildTurnInput } from "./codex-app-server/composer";
 import { compactRpcError, getErrorMessage } from "./codex-app-server/errorFormat";
@@ -140,6 +141,8 @@ export function useCodexAppServer() {
   const olderTurnsCursorRef = useRef<string | null>(null);
   const activeTurnIdRef = useRef<string | null>(null);
   const timelineRef = useRef<TimelineEntry[]>([]);
+  const modelSettingsRevisionRef = useRef(0);
+  const pendingSettingsUpdatesRef = useRef(0);
   const deltaBufferRef = useRef<DeltaBuffer>({
     timer: null,
     chunks: new Map(),
@@ -199,6 +202,7 @@ export function useCodexAppServer() {
       return;
     }
 
+    modelSettingsRevisionRef.current += 1;
     setSelectedModelId(notification.params.threadSettings.model);
     setSelectedReasoningEffort(notification.params.threadSettings.effort);
     setSelectedPermissionModeId(permissionModeFromThreadSettings(notification.params.threadSettings));
@@ -430,17 +434,53 @@ export function useCodexAppServer() {
     setPendingEntries((current) => reconcilePendingEntries(current, pageTimeline, threadId));
   };
 
+  const readSelectedThreadMetadata = async (threadId: string) => {
+    const revision = modelSettingsRevisionRef.current;
+    const canSyncSettings = pendingSettingsUpdatesRef.current === 0;
+    const metadata = await readThreadMetadata(client, threadId);
+    // 电脑端和独立 App Server 不共享内存通知，通过已有的会话刷新读取保存的设置。
+    // 如果请求期间用户更改了选择，或设置仍在保存，不用旧快照覆盖刚选中的值。
+    if (
+      selectedThreadIdRef.current === threadId &&
+      canSyncSettings &&
+      pendingSettingsUpdatesRef.current === 0 &&
+      modelSettingsRevisionRef.current === revision
+    ) {
+      if (metadata.model !== undefined) {
+        setSelectedModelId(metadata.model || null);
+      }
+      if (metadata.reasoningEffort !== undefined) {
+        setSelectedReasoningEffort(metadata.reasoningEffort);
+      }
+    }
+    return metadata;
+  };
+
   const openThread = async (thread: Thread) => {
     selectedThreadIdRef.current = thread.id;
+    modelSettingsRevisionRef.current += 1;
     setSelectedThread(thread);
+    setSelectedModelId(null);
+    setSelectedReasoningEffort(null);
     setTimeline([]);
     setIsOpeningThread(true);
     setOlderTurnsCursor(null);
     setActiveTurnId(null);
 
+    let metadata: ThreadWithModelSettings | null = null;
     try {
-      // 打开会话必须拿到该 thread 自己的 model / effort。resume 和 turns/list 的往返次数相同，
-      // 所以这里始终走 resume，避免沿用上一个会话的设置。
+      // 先读取电脑端保存的设置。分页历史可能无法 resume，但仍能读取模型和思考程度。
+      metadata = await readSelectedThreadMetadata(thread.id);
+    } catch (error) {
+      const message = compactRpcError(error);
+      setLogs((current) => [`thread metadata unavailable: ${message}`, ...current].slice(0, 30));
+    }
+    if (selectedThreadIdRef.current !== thread.id) {
+      return;
+    }
+
+    try {
+      // resume 用于订阅事件和审批；旧服务端不返回 metadata 设置时，用 resume 结果兜底。
       const resumed = await resumeThreadWithInitialTurnPage(client, thread, {
         force: thread.status.type === "active",
         requireThreadSettings: true,
@@ -450,17 +490,20 @@ export function useCodexAppServer() {
       }
 
       const resumedThread = resumed.thread;
-      // 无条件覆盖：resume 返回的就是该 thread 的权威设置，不做「保留当前值」的兜底。
-      // 拿不到时清空，turn/start 不传这两个字段，由 app-server 按该 thread 自身设置执行。
-      setSelectedModelId(resumed.model || null);
-      setSelectedReasoningEffort(resumed.reasoningEffort ?? null);
+      if (metadata?.model === undefined) {
+        setSelectedModelId(resumed.model || null);
+      }
+      if (metadata?.reasoningEffort === undefined) {
+        setSelectedReasoningEffort(resumed.reasoningEffort ?? null);
+      }
       setSelectedThread(resumedThread);
 
       applyOpenedThreadPage(thread.id, resumed.initialTurnsPage ?? (await loadTurnPage(client, resumedThread.id, null)));
     } catch (error) {
-      // 读不到权威设置时必须清空，绝不能把上一个会话的模型 / 思考程度发给当前会话。
-      setSelectedModelId(null);
-      setSelectedReasoningEffort(null);
+      if (selectedThreadIdRef.current !== thread.id) {
+        return;
+      }
+      // 保留 thread/read 成功取得的设置；两种读取都失败时维持打开时清空的状态。
 
       const message = compactRpcError(error);
       setRecentError(`open thread failed: ${message}`);
@@ -480,6 +523,15 @@ export function useCodexAppServer() {
 
   const recoverSelectedThreadSubscription = async (thread: Thread) => {
     const threadId = thread.id;
+    let metadata: ThreadWithModelSettings | null = null;
+    try {
+      metadata = await readSelectedThreadMetadata(threadId);
+    } catch {
+      // 旧服务端或短暂读取失败时，继续尝试恢复订阅。
+    }
+    if (selectedThreadIdRef.current !== threadId) {
+      return;
+    }
 
     try {
       // 重连后强制 resume 当前 thread，触发 app-server 重新 attach listener 并重放未决审批 request。
@@ -489,9 +541,12 @@ export function useCodexAppServer() {
       }
 
       const resumedThread = resumed.thread;
-      // 重连后同样以服务端为准，覆盖模型与思考程度，避免电脑端改过之后手机端不跟。
-      setSelectedModelId(resumed.model || null);
-      setSelectedReasoningEffort(resumed.reasoningEffort ?? null);
+      if (metadata?.model === undefined) {
+        setSelectedModelId(resumed.model || null);
+      }
+      if (metadata?.reasoningEffort === undefined) {
+        setSelectedReasoningEffort(resumed.reasoningEffort ?? null);
+      }
       setSelectedThread(resumedThread);
       setThreads((current) => current.map((candidate) => (candidate.id === resumedThread.id ? { ...candidate, ...resumedThread } : candidate)));
 
@@ -889,6 +944,7 @@ export function useCodexAppServer() {
   };
 
   const selectModel = (modelId: string) => {
+    modelSettingsRevisionRef.current += 1;
     const nextModel = pickerData.models.find((model) => model.model === modelId) ?? null;
     // 只改用户真正点过的那个参数：新模型仍支持当前思考程度就原样保留，
     // 只有当前档位在新模型上不被支持时才回退到新模型的默认档位。
@@ -902,6 +958,7 @@ export function useCodexAppServer() {
   };
 
   const selectReasoningEffort = (effort: string) => {
+    modelSettingsRevisionRef.current += 1;
     setSelectedReasoningEffort(effort);
     void updateSelectedThreadSettings({ effort }, "reasoning settings update failed");
   };
@@ -933,6 +990,7 @@ export function useCodexAppServer() {
       return;
     }
 
+    pendingSettingsUpdatesRef.current += 1;
     try {
       await updateThreadSettings(client, {
         threadId: selectedThread.id,
@@ -942,6 +1000,9 @@ export function useCodexAppServer() {
       const message = compactRpcError(error);
       setRecentError(`${logPrefix}: ${message}`);
       setLogs((current) => [`${logPrefix}: ${message}`, ...current].slice(0, 30));
+    } finally {
+      pendingSettingsUpdatesRef.current -= 1;
+      modelSettingsRevisionRef.current += 1;
     }
   };
 
@@ -1065,10 +1126,7 @@ export function useCodexAppServer() {
     }
 
     try {
-      const threadResponse = await client.request<ThreadReadResponse>("thread/read", {
-        threadId,
-        includeTurns: false,
-      });
+      const threadResponse = { thread: await readSelectedThreadMetadata(threadId) };
       if (selectedThreadIdRef.current !== threadId) {
         return;
       }

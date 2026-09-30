@@ -14,7 +14,7 @@ powershell -ExecutionPolicy Bypass -File C:\file\app-codexapp\scripts\restart-ph
 & 'C:\Program Files (x86)\cloudflared\cloudflared.exe' tunnel --protocol http2 --url http://127.0.0.1:4501
 
 ## 显式指定新版本和 UTF-8 更新记录，然后打包、校验、上传并发布。
-pnpm release:android -Version 1.0.3 -VersionCode 4 -ChangelogFile .\release-notes.txt
+pnpm release:android -Version 1.0.5 -VersionCode 6 -ChangelogFile .\release-notes.txt
 
 ## 预览
 

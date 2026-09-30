@@ -15,7 +15,7 @@ https://updates.yinxingye.space/apps/codexapp/latest.json
     └── <versionCode>.json
 ~~~
 
-发布时先上传 APK 和 versions/<versionCode>.json，最后更新 latest.json。每次发布后保留旧 APK 和版本记录。
+发布时先上传 APK 和 versions/<versionCode>.json，最后更新 latest.json。服务器只保留 `versionCode` 最大的三个版本及其 APK；每次发布成功后自动清理更旧的 APK 和版本记录，根目录的 `latest.json` 始终保留。
 
 ## 历史发布示例（1.0.2）
 
