@@ -4,6 +4,7 @@ import { Modal, Pressable, Text, TextInput, View } from "react-native";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 
 import { DEFAULT_APP_SERVER_URL } from "@/hooks/codex-app-server/connectionStorage";
+import type { ConnectionProfile } from "@/hooks/codex-app-server/connectionProfiles";
 import { useConnectionProfiles } from "@/hooks/useConnectionProfiles";
 import { ConnectionProfileList } from "./connection/ConnectionProfileList";
 import type { ConnectionState, ReadinessStatus } from "@/types/codex";
@@ -24,6 +25,8 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
   const { url, setUrl, token, setToken, status: storageStatus, setStatus: setStorageStatus } = accounts;
   const [scannerVisible, setScannerVisible] = useState(false);
   const [scannerLocked, setScannerLocked] = useState(false);
+  // 三行连接信息默认收起，只有「新增账号」或选中某个账号时才展开编辑区。
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scannerLockedRef = useRef(false);
   const isConnecting = state === "connecting" || state === "reconnecting";
@@ -58,7 +61,29 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
     }
 
     accounts.importConfig(parsed);
+    // 扫码导入的是新账号草稿，展开编辑区让用户补名称。
+    setIsEditorOpen(true);
     setScannerVisible(false);
+  };
+
+  const handleCreateProfile = () => {
+    accounts.create();
+    setIsEditorOpen(true);
+  };
+
+  const handleSelectProfile = (profile: ConnectionProfile) => {
+    accounts.select(profile);
+    setIsEditorOpen(true);
+  };
+
+  const handleSaveProfile = async () => {
+    await accounts.save();
+    setIsEditorOpen(false);
+  };
+
+  const handleConnect = async () => {
+    await accounts.connect(onConnect);
+    setIsEditorOpen(false);
   };
 
   return (
@@ -80,46 +105,62 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
         selectedId={accounts.selectedId}
         disabled={accounts.isBusy || isConnecting}
         isLoading={accounts.isLoading}
-        onSelect={accounts.select}
-        onCreate={accounts.create}
+        onSelect={handleSelectProfile}
+        onCreate={handleCreateProfile}
         onDelete={(profile) => void accounts.remove(profile)}
       />
-      <Text style={styles.fieldLabel}>账号名称</Text>
-      <TextInput
-        accessibilityLabel="账号名称"
-        editable={!accounts.isBusy && !isConnecting}
-        onChangeText={accounts.setName}
-        placeholder="例如：家用电脑、工作电脑"
-        maxLength={60}
-        style={styles.input}
-        value={accounts.name}
-        keyboardAppearance={isDark ? "dark" : "light"}
-      />
-      <Text style={styles.fieldLabel}>连接网址</Text>
-      <TextInput
-        accessibilityLabel="连接网址"
-        editable={!accounts.isBusy && !isConnecting}
-        autoCapitalize="none"
-        autoCorrect={false}
-        onChangeText={setUrl}
-        placeholder={DEFAULT_APP_SERVER_URL}
-        style={styles.input}
-        value={url}
-        keyboardAppearance={isDark ? "dark" : "light"}
-      />
-      <Text style={styles.fieldLabel}>Relay token</Text>
-      <TextInput
-        accessibilityLabel="Relay token"
-        editable={!accounts.isBusy && !isConnecting}
-        autoCapitalize="none"
-        autoCorrect={false}
-        onChangeText={setToken}
-        placeholder="relay token / capability token"
-        secureTextEntry
-        style={styles.input}
-        value={token}
-        keyboardAppearance={isDark ? "dark" : "light"}
-      />
+      {isEditorOpen ? (
+        <View style={styles.editor}>
+          <View style={styles.editorHeader}>
+            <Text style={styles.editorTitle}>{accounts.selectedId ? "编辑账号" : "新增账号"}</Text>
+            <Text style={styles.editorHint}>{accounts.selectedId ? "保存后继续用于连接" : "填写后保存为新账号"}</Text>
+          </View>
+          <Text style={styles.fieldLabel}>账号名称</Text>
+          <TextInput
+            accessibilityLabel="账号名称"
+            editable={!accounts.isBusy && !isConnecting}
+            onChangeText={accounts.setName}
+            placeholder="例如：家用电脑、工作电脑"
+            maxLength={60}
+            style={styles.input}
+            value={accounts.name}
+            keyboardAppearance={isDark ? "dark" : "light"}
+          />
+          <Text style={styles.fieldLabel}>连接网址</Text>
+          <TextInput
+            accessibilityLabel="连接网址"
+            editable={!accounts.isBusy && !isConnecting}
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={setUrl}
+            placeholder={DEFAULT_APP_SERVER_URL}
+            style={styles.input}
+            value={url}
+            keyboardAppearance={isDark ? "dark" : "light"}
+          />
+          <Text style={styles.fieldLabel}>Relay token</Text>
+          <TextInput
+            accessibilityLabel="Relay token"
+            editable={!accounts.isBusy && !isConnecting}
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={setToken}
+            placeholder="relay token / capability token"
+            secureTextEntry
+            style={styles.input}
+            value={token}
+            keyboardAppearance={isDark ? "dark" : "light"}
+          />
+          <View style={styles.actions}>
+            <Pressable disabled={accounts.isBusy || isConnecting} onPress={() => void handleSaveProfile()} style={[styles.primaryButton, (accounts.isBusy || isConnecting) && styles.disabledButton]}>
+              <Text style={styles.primaryButtonText}>{accounts.selectedId ? "保存账号修改" : "保存为新账号"}</Text>
+            </Pressable>
+            <Pressable disabled={accounts.isBusy} onPress={() => setIsEditorOpen(false)} style={[styles.secondaryButton, styles.flexButton, accounts.isBusy && styles.disabledButton]}>
+              <Text style={styles.secondaryButtonText}>取消</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
       {readiness ? (
         <Text style={[styles.readiness, readiness.ok ? styles.readinessOk : styles.readinessError]}>
           {readiness.ok ? `readyz ${readiness.status}` : readiness.error}
@@ -127,14 +168,11 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
       ) : null}
       {storageStatus ? <Text style={styles.storageText}>{storageStatus}</Text> : null}
       {recentError ? <Text style={styles.errorText}>{recentError}</Text> : null}
-      <Pressable disabled={accounts.isBusy || isConnecting} onPress={() => void accounts.save()} style={[styles.secondaryButton, (accounts.isBusy || isConnecting) && styles.disabledButton]}>
-        <Text style={styles.secondaryButtonText}>{accounts.selectedId ? "保存账号修改" : "保存为新账号"}</Text>
-      </Pressable>
       <Pressable disabled={accounts.isBusy || isConnecting} onPress={() => void openScanner()} style={[styles.scanButton, (accounts.isBusy || isConnecting) && styles.disabledButton]}>
         <Text style={styles.scanText}>扫码导入</Text>
       </Pressable>
       <View style={styles.actions}>
-        <Pressable disabled={isConnecting || accounts.isBusy} onPress={() => void accounts.connect(onConnect)} style={[styles.primaryButton, (isConnecting || accounts.isBusy) && styles.disabledButton]}>
+        <Pressable disabled={isConnecting || accounts.isBusy} onPress={() => void handleConnect()} style={[styles.primaryButton, (isConnecting || accounts.isBusy) && styles.disabledButton]}>
           <Text style={styles.primaryButtonText}>{isConnecting ? "连接中..." : "连接"}</Text>
         </Pressable>
         <Pressable disabled={accounts.isBusy} onPress={onDisconnect} style={[styles.secondaryButton, styles.disconnectButton, accounts.isBusy && styles.disabledButton]}>
@@ -143,9 +181,6 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
       </View>
       <Pressable disabled={accounts.isBusy || isConnecting} onPress={() => onProbe(url, token)} style={styles.probeButton}>
         <Text style={styles.probeText}>检测 readyz</Text>
-      </Pressable>
-      <Pressable disabled={accounts.isBusy || isConnecting} onPress={() => void accounts.clearLastConnection()} style={styles.clearButton}>
-        <Text style={styles.clearText}>清除上次连接</Text>
       </Pressable>
       <ConnectionQrScannerModal
         onClose={() => setScannerVisible(false)}
@@ -301,6 +336,30 @@ const useStyles = createThemedStyles({
     fontSize: 12,
     fontWeight: "700",
   },
+  editor: {
+    backgroundColor: "#f4f7fb",
+    borderColor: "#d8dee8",
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+    padding: 12,
+  },
+  editorHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "space-between",
+  },
+  editorTitle: {
+    color: "#182230",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  editorHint: {
+    color: "#697789",
+    fontSize: 11,
+  },
+  flexButton: { flex: 1 },
   readiness: {
     borderRadius: 8,
     fontSize: 12,
@@ -382,15 +441,6 @@ const useStyles = createThemedStyles({
   },
   probeText: {
     color: "#304052",
-    fontWeight: "700",
-  },
-  clearButton: {
-    alignItems: "center",
-    paddingVertical: 6,
-  },
-  clearText: {
-    color: "#7b8797",
-    fontSize: 12,
     fontWeight: "700",
   },
   scannerBackdrop: {

@@ -26,7 +26,7 @@ export function ConnectionProfileList({ profiles, selectedId, disabled, isLoadin
           <Text style={styles.addText}>新增账号</Text>
         </Pressable>
       </View>
-      <Text style={styles.hint}>选择账号后点击连接。网址和 token 成对保存。</Text>
+      <Text style={styles.hint}>点击账号可查看或修改网址与 token，选中后点连接。</Text>
       {profiles.map((profile) => {
         const selected = profile.id === selectedId;
         return (
@@ -60,7 +60,7 @@ export function ConnectionProfileList({ profiles, selectedId, disabled, isLoadin
           </View>
         );
       })}
-      {profiles.length === 0 ? <Text style={styles.hint}>{isLoading ? "正在读取账号…" : "还没有账号记录，可填写下方信息添加。"}</Text> : null}
+      {profiles.length === 0 ? <Text style={styles.hint}>{isLoading ? "正在读取账号…" : "还没有账号记录，点击「新增账号」添加。"}</Text> : null}
     </View>
   );
 }
