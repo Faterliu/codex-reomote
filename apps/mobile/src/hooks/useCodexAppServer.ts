@@ -133,6 +133,7 @@ export function useCodexAppServer() {
   const clientRef = useRef<JsonRpcClient | null>(null);
   const pendingCounterRef = useRef(1);
   const lastConnectionRef = useRef<NormalizedConnection | null>(null);
+  const connectionRevisionRef = useRef(0);
   const manualDisconnectRef = useRef(false);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef(0);
@@ -322,6 +323,27 @@ export function useCodexAppServer() {
 
     try {
       const target = normalizeConnection(url, token);
+      const previous = lastConnectionRef.current;
+      connectionRevisionRef.current += 1;
+      setIsRefreshingThreads(false);
+      setIsLoadingPickerData(false);
+      if (previous && (previous.socketUrl !== target.socketUrl || previous.authToken !== target.authToken)) {
+        // 换账号时清掉上一台服务端的数据，避免在新连接下操作旧会话或使用旧额度。
+        closeThread();
+        setThreads([]);
+        setArchivedThreads([]);
+        setShowArchivedThreads(false);
+        setPendingEntries([]);
+        setApproval(null);
+        setUserInputRequest(null);
+        setRateLimits(null);
+        setPickerData({ models: [], permissionProfiles: [], skills: [], plugins: [] });
+        setSelectedModelId(null);
+        setSelectedReasoningEffort(null);
+        setSelectedPermissionModeId(DEFAULT_PERMISSION_MODE_ID);
+        setEvents([]);
+        setLogs([]);
+      }
       lastConnectionRef.current = target;
       client.connect(target.socketUrl, target.authToken);
     } catch (error) {
@@ -397,21 +419,24 @@ export function useCodexAppServer() {
       return;
     }
 
+    const connectionRevision = connectionRevisionRef.current;
     setIsRefreshingThreads(true);
     try {
       const archived = options.archived ?? showArchivedThreads;
       const data = await loadThreads(client, archived);
+      if (connectionRevision !== connectionRevisionRef.current) return;
       if (archived) {
         setArchivedThreads(data);
       } else {
         setThreads(data);
       }
     } catch (error) {
+      if (connectionRevision !== connectionRevisionRef.current) return;
       const message = compactRpcError(error);
       setRecentError(`thread refresh failed: ${message}`);
       setLogs((current) => [`thread refresh failed: ${message}`, ...current].slice(0, 30));
     } finally {
-      setIsRefreshingThreads(false);
+      if (connectionRevision === connectionRevisionRef.current) setIsRefreshingThreads(false);
     }
   };
 
@@ -858,6 +883,7 @@ export function useCodexAppServer() {
       return;
     }
 
+    const connectionRevision = connectionRevisionRef.current;
     setIsLoadingPickerData(true);
 
     try {
@@ -869,6 +895,7 @@ export function useCodexAppServer() {
         loadInstalledPlugins(client, cwd),
         loadAccountRateLimits(client),
       ]);
+      if (connectionRevision !== connectionRevisionRef.current) return;
 
       if (modelsResult.status === "rejected") {
         const message = compactRpcError(modelsResult.reason);
@@ -911,7 +938,7 @@ export function useCodexAppServer() {
         setLogs((current) => [...optionalLogs, ...current].slice(0, 30));
       }
     } finally {
-      setIsLoadingPickerData(false);
+      if (connectionRevision === connectionRevisionRef.current) setIsLoadingPickerData(false);
     }
   };
 

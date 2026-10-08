@@ -1,14 +1,11 @@
 import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Modal, Pressable, Text, TextInput, View } from "react-native";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 
-import {
-  clearSavedConnectionConfig,
-  DEFAULT_APP_SERVER_URL,
-  loadSavedConnectionConfig,
-  saveConnectionConfig,
-} from "@/hooks/codex-app-server/connectionStorage";
+import { DEFAULT_APP_SERVER_URL } from "@/hooks/codex-app-server/connectionStorage";
+import { useConnectionProfiles } from "@/hooks/useConnectionProfiles";
+import { ConnectionProfileList } from "./connection/ConnectionProfileList";
 import type { ConnectionState, ReadinessStatus } from "@/types/codex";
 
 type Props = {
@@ -23,67 +20,13 @@ type Props = {
 export function ConnectionPanel({ state, readiness, recentError = null, onConnect, onDisconnect, onProbe }: Props) {
   const styles = useStyles();
   const { isDark } = useAppTheme();
-  const [url, setUrl] = useState(DEFAULT_APP_SERVER_URL);
-  const [token, setToken] = useState("");
-  const [storageStatus, setStorageStatus] = useState<string | null>(null);
+  const accounts = useConnectionProfiles();
+  const { url, setUrl, token, setToken, status: storageStatus, setStatus: setStorageStatus } = accounts;
   const [scannerVisible, setScannerVisible] = useState(false);
   const [scannerLocked, setScannerLocked] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scannerLockedRef = useRef(false);
   const isConnecting = state === "connecting" || state === "reconnecting";
-
-  useEffect(() => {
-    let mounted = true;
-
-    const restoreConfig = async () => {
-      try {
-        const savedConfig = await loadSavedConnectionConfig();
-
-        if (!mounted) {
-          return;
-        }
-
-        if (savedConfig?.url) {
-          setUrl(savedConfig.url);
-        }
-        if (savedConfig?.token) {
-          setToken(savedConfig.token);
-        }
-        if (savedConfig) {
-          setStorageStatus("已恢复保存的连接配置");
-        }
-      } catch (error) {
-        if (mounted) {
-          setStorageStatus(`读取保存配置失败：${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    };
-
-    void restoreConfig();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const saveConfig = async () => {
-    try {
-      const result = await saveConnectionConfig({ url, token });
-      if (result === "unavailable") {
-        setStorageStatus("当前平台不支持安全保存");
-        return;
-      }
-
-      setStorageStatus("已安全保存连接配置");
-    } catch (error) {
-      setStorageStatus(`保存配置失败：${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
-
-  const handleConnect = async () => {
-    await saveConfig();
-    onConnect(url, token);
-  };
 
   const openScanner = async () => {
     const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
@@ -114,26 +57,8 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
       return;
     }
 
-    setUrl(parsed.url);
-    setToken(parsed.token);
-    setStorageStatus("已从二维码导入连接配置");
+    accounts.importConfig(parsed);
     setScannerVisible(false);
-  };
-
-  const clearConfig = async () => {
-    try {
-      const result = await clearSavedConnectionConfig();
-      if (result === "unavailable") {
-        setStorageStatus("当前平台不支持安全保存");
-        return;
-      }
-
-      setUrl(DEFAULT_APP_SERVER_URL);
-      setToken("");
-      setStorageStatus("已清除保存的连接配置");
-    } catch (error) {
-      setStorageStatus(`清除配置失败：${error instanceof Error ? error.message : String(error)}`);
-    }
   };
 
   return (
@@ -150,7 +75,30 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
           {getStateLabel(state)}
         </Text>
       </View>
+      <ConnectionProfileList
+        profiles={accounts.profiles}
+        selectedId={accounts.selectedId}
+        disabled={accounts.isBusy || isConnecting}
+        isLoading={accounts.isLoading}
+        onSelect={accounts.select}
+        onCreate={accounts.create}
+        onDelete={(profile) => void accounts.remove(profile)}
+      />
+      <Text style={styles.fieldLabel}>账号名称</Text>
       <TextInput
+        accessibilityLabel="账号名称"
+        editable={!accounts.isBusy && !isConnecting}
+        onChangeText={accounts.setName}
+        placeholder="例如：家用电脑、工作电脑"
+        maxLength={60}
+        style={styles.input}
+        value={accounts.name}
+        keyboardAppearance={isDark ? "dark" : "light"}
+      />
+      <Text style={styles.fieldLabel}>连接网址</Text>
+      <TextInput
+        accessibilityLabel="连接网址"
+        editable={!accounts.isBusy && !isConnecting}
         autoCapitalize="none"
         autoCorrect={false}
         onChangeText={setUrl}
@@ -159,7 +107,10 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
         value={url}
         keyboardAppearance={isDark ? "dark" : "light"}
       />
+      <Text style={styles.fieldLabel}>Relay token</Text>
       <TextInput
+        accessibilityLabel="Relay token"
+        editable={!accounts.isBusy && !isConnecting}
         autoCapitalize="none"
         autoCorrect={false}
         onChangeText={setToken}
@@ -176,22 +127,25 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
       ) : null}
       {storageStatus ? <Text style={styles.storageText}>{storageStatus}</Text> : null}
       {recentError ? <Text style={styles.errorText}>{recentError}</Text> : null}
-      <Pressable onPress={() => void openScanner()} style={styles.scanButton}>
+      <Pressable disabled={accounts.isBusy || isConnecting} onPress={() => void accounts.save()} style={[styles.secondaryButton, (accounts.isBusy || isConnecting) && styles.disabledButton]}>
+        <Text style={styles.secondaryButtonText}>{accounts.selectedId ? "保存账号修改" : "保存为新账号"}</Text>
+      </Pressable>
+      <Pressable disabled={accounts.isBusy || isConnecting} onPress={() => void openScanner()} style={[styles.scanButton, (accounts.isBusy || isConnecting) && styles.disabledButton]}>
         <Text style={styles.scanText}>扫码导入</Text>
       </Pressable>
       <View style={styles.actions}>
-        <Pressable disabled={isConnecting} onPress={() => void handleConnect()} style={[styles.primaryButton, isConnecting && styles.disabledButton]}>
+        <Pressable disabled={isConnecting || accounts.isBusy} onPress={() => void accounts.connect(onConnect)} style={[styles.primaryButton, (isConnecting || accounts.isBusy) && styles.disabledButton]}>
           <Text style={styles.primaryButtonText}>{isConnecting ? "连接中..." : "连接"}</Text>
         </Pressable>
-        <Pressable onPress={onDisconnect} style={styles.secondaryButton}>
+        <Pressable disabled={accounts.isBusy} onPress={onDisconnect} style={[styles.secondaryButton, styles.disconnectButton, accounts.isBusy && styles.disabledButton]}>
           <Text style={styles.secondaryButtonText}>断开</Text>
         </Pressable>
       </View>
-      <Pressable onPress={() => onProbe(url, token)} style={styles.probeButton}>
+      <Pressable disabled={accounts.isBusy || isConnecting} onPress={() => onProbe(url, token)} style={styles.probeButton}>
         <Text style={styles.probeText}>检测 readyz</Text>
       </Pressable>
-      <Pressable onPress={() => void clearConfig()} style={styles.clearButton}>
-        <Text style={styles.clearText}>清除保存配置</Text>
+      <Pressable disabled={accounts.isBusy || isConnecting} onPress={() => void accounts.clearLastConnection()} style={styles.clearButton}>
+        <Text style={styles.clearText}>清除上次连接</Text>
       </Pressable>
       <ConnectionQrScannerModal
         onClose={() => setScannerVisible(false)}
@@ -342,6 +296,11 @@ const useStyles = createThemedStyles({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  fieldLabel: {
+    color: "#516071",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   readiness: {
     borderRadius: 8,
     fontSize: 12,
@@ -407,13 +366,13 @@ const useStyles = createThemedStyles({
     borderColor: "#cfd7e3",
     borderRadius: 999,
     borderWidth: 1,
-    flex: 1,
     paddingVertical: 11,
   },
   secondaryButtonText: {
     color: "#304052",
     fontWeight: "700",
   },
+  disconnectButton: { flex: 1 },
   probeButton: {
     alignItems: "center",
     borderColor: "#cfd7e3",
