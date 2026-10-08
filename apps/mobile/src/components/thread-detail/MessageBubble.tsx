@@ -1,8 +1,9 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import type { ToolRequestUserInputResponse } from "@codex-mobile/protocol/v2";
 import { Ionicons } from "@expo/vector-icons";
 import { memo, useEffect, useMemo, useState } from "react";
 import * as Clipboard from "expo-clipboard";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import Markdown from "react-native-markdown-display";
 
 import { ApprovalCard } from "@/components/approval/ApprovalCard";
@@ -66,6 +67,9 @@ export const MessageBubble = memo(function MessageBubble({
   isForking = false,
   forkDisabled = false,
 }: Props) {
+  const styles = useStyles();
+  const markdownStyles = useMarkdownStyles();
+  const { color: themeColor } = useAppTheme();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
@@ -135,7 +139,7 @@ export const MessageBubble = memo(function MessageBubble({
     <View style={[styles.messageRow, entry.role === "user" ? styles.messageRowUser : styles.messageRowOther, (isToolCard || isCommandCard) && styles.messageRowFull, compact && styles.messageRowCompact]}>
       {showPendingSpinner ? (
         <View style={styles.pendingSpinner}>
-          <ActivityIndicator color="#2454d6" size="small" />
+          <ActivityIndicator color={themeColor("#2454d6")} size="small" />
         </View>
       ) : null}
       <Pressable
@@ -233,7 +237,7 @@ export const MessageBubble = memo(function MessageBubble({
                 <View style={styles.agentActionRow}>
                   {canCopy ? (
                     <Pressable onPress={() => void copyMessage()} style={styles.agentCopyButton}>
-                      <Ionicons color="#516071" name={copied ? "checkmark" : "copy-outline"} size={14} />
+                      <Ionicons color={themeColor("#516071")} name={copied ? "checkmark" : "copy-outline"} size={14} />
                     </Pressable>
                   ) : null}
                   {canFork ? (
@@ -251,9 +255,9 @@ export const MessageBubble = memo(function MessageBubble({
                       style={({ pressed }) => [styles.agentCopyButton, (pressed || forkDisabled) && styles.agentActionPressed]}
                     >
                       {isForking ? (
-                        <ActivityIndicator color="#2454d6" size="small" />
+                        <ActivityIndicator color={themeColor("#2454d6")} size="small" />
                       ) : (
-                        <Ionicons color="#516071" name="git-branch-outline" size={14} />
+                        <Ionicons color={themeColor("#516071")} name="git-branch-outline" size={14} />
                       )}
                     </Pressable>
                   ) : null}
@@ -266,7 +270,7 @@ export const MessageBubble = memo(function MessageBubble({
                 {canCopy ? (
                   // 用户消息 footer 空间有限，复制用图标避免和时间挤在一起。
                   <Pressable onPress={() => void copyMessage()} style={styles.copyButton}>
-                    <Ionicons color="#ffffff" name={copied ? "checkmark" : "copy-outline"} size={13} />
+                    <Ionicons color={themeColor("#ffffff")} name={copied ? "checkmark" : "copy-outline"} size={13} />
                   </Pressable>
                 ) : null}
               </View>
@@ -282,6 +286,8 @@ export const MessageBubble = memo(function MessageBubble({
 });
 
 function WebSearchSummary({ entry, expanded }: { entry: TimelineEntry; expanded: boolean }) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   const actions = entry.webSearchActions ?? [];
   const title = entry.streaming ? `正在搜索网页 ${actions.length || 1} 次` : entry.title;
 
@@ -289,16 +295,16 @@ function WebSearchSummary({ entry, expanded }: { entry: TimelineEntry; expanded:
     <View style={styles.webSearchPanel}>
       <View style={styles.webSearchHeader}>
         <View style={styles.webSearchTitleRow}>
-          <Ionicons color="#516071" name="globe-outline" size={18} />
+          <Ionicons color={themeColor("#516071")} name="globe-outline" size={18} />
           <Text style={styles.webSearchTitle}>{title}</Text>
         </View>
-        <Ionicons color="#7b8797" name={expanded ? "chevron-up" : "chevron-down"} size={18} />
+        <Ionicons color={themeColor("#7b8797")} name={expanded ? "chevron-up" : "chevron-down"} size={18} />
       </View>
       {expanded ? (
         <View style={styles.webSearchActions}>
           {actions.map((action) => (
             <View key={action.id} style={styles.webSearchActionRow}>
-              <Ionicons color="#6b7788" name={getWebSearchIconName(action.icon)} size={16} />
+              <Ionicons color={themeColor("#6b7788")} name={getWebSearchIconName(action.icon)} size={16} />
               <View style={styles.webSearchActionText}>
                 <Text style={styles.webSearchActionLabel}>{action.label}</Text>
                 <Text numberOfLines={2} style={styles.webSearchActionDetail}>
@@ -334,6 +340,8 @@ function TurnProcessSummary({
   onOpenFileChange: (fileChange: TimelineFileChange) => void;
   onDownloadHostFile?: (hostPath: string) => void | Promise<void>;
 }) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   const processEntries = entry.processEntries ?? [];
 
   return (
@@ -343,7 +351,7 @@ function TurnProcessSummary({
           <Text style={styles.turnProcessTitle}>{entry.title}</Text>
           {processEntries.length ? <Text style={styles.turnProcessCount}>{processEntries.length} 项</Text> : null}
         </View>
-        {!compact ? <Ionicons color="#7b8797" name={expanded ? "chevron-up" : "chevron-forward"} size={18} /> : null}
+        {!compact ? <Ionicons color={themeColor("#7b8797")} name={expanded ? "chevron-up" : "chevron-forward"} size={18} /> : null}
       </View>
       {expanded ? (
         <View style={styles.turnProcessEntries}>
@@ -376,12 +384,14 @@ function HostFileDownloadCard({
   hostPath: string;
   onPress: () => void;
 }) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   const filename = getFilename(hostPath);
 
   return (
     <Pressable disabled={downloading} onPress={onPress} style={[styles.downloadCard, downloading && styles.downloadCardDisabled]}>
       <View style={styles.downloadIcon}>
-        {downloading ? <ActivityIndicator color="#2454d6" size="small" /> : <Ionicons color="#2454d6" name="download-outline" size={19} />}
+        {downloading ? <ActivityIndicator color={themeColor("#2454d6")} size="small" /> : <Ionicons color={themeColor("#2454d6")} name="download-outline" size={19} />}
       </View>
       <View style={styles.downloadText}>
         <Text numberOfLines={1} style={styles.downloadTitle}>
@@ -413,7 +423,7 @@ function getWebSearchIconName(icon: NonNullable<TimelineEntry["webSearchActions"
   }
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   messageRow: {
     alignItems: "center",
     flexDirection: "row",
@@ -717,7 +727,7 @@ const styles = StyleSheet.create({
   },
 });
 
-const markdownStyles = StyleSheet.create({
+const useMarkdownStyles = createThemedStyles({
   body: {
     color: "#182230",
     fontSize: 14,

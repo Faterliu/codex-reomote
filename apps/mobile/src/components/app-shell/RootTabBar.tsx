@@ -1,7 +1,8 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
-export type RootTab = "connection" | "threads" | "chatgpt";
+export type RootTab = "connection" | "threads" | "settings";
 
 type Props = {
   activeTab: RootTab;
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export function RootTabBar({ activeTab, onChange }: Props) {
+  const styles = useStyles();
   return (
     <View style={styles.tabBar}>
       <TabButton
@@ -26,11 +28,11 @@ export function RootTabBar({ activeTab, onChange }: Props) {
         onPress={() => onChange("threads")}
       />
       <TabButton
-        active={activeTab === "chatgpt"}
-        activeIcon="globe"
-        icon="globe-outline"
-        label="ChatGPT"
-        onPress={() => onChange("chatgpt")}
+        active={activeTab === "settings"}
+        activeIcon="settings"
+        icon="settings-outline"
+        label="设置"
+        onPress={() => onChange("settings")}
       />
     </View>
   );
@@ -44,23 +46,25 @@ function TabButton({
   onPress,
 }: {
   active: boolean;
-  activeIcon: "link" | "chatbubbles" | "globe";
-  icon: "link-outline" | "chatbubbles-outline" | "globe-outline";
+  activeIcon: "link" | "chatbubbles" | "settings";
+  icon: "link-outline" | "chatbubbles-outline" | "settings-outline";
   label: string;
   onPress: () => void;
 }) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   const color = active ? "#2454d6" : "#8a94a6";
 
   return (
     <Pressable onPress={onPress} style={styles.tabItem}>
-      <Ionicons color={color} name={active ? activeIcon : icon} size={22} />
+      <Ionicons color={themeColor(color)} name={active ? activeIcon : icon} size={22} />
       <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
       <View style={[styles.tabIndicator, active && styles.tabIndicatorActive]} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   tabBar: {
     backgroundColor: "#ffffff",
     borderTopColor: "#d8dee8",

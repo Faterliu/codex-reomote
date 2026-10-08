@@ -1,4 +1,5 @@
-import { StyleSheet, Switch, Text, View } from "react-native";
+import { createThemedStyles } from "@/theme/AppTheme";
+import { Switch, Text, View } from "react-native";
 
 import type { AutoRotateSettingController } from "@/hooks/useAutoRotateSetting";
 
@@ -7,9 +8,10 @@ type Props = {
 };
 
 export function AutoRotateSettings({ setting }: Props) {
+  const styles = useStyles();
   return (
     <View style={styles.panel}>
-      <Text style={styles.title}>应用设置</Text>
+      <Text style={styles.title}>屏幕方向</Text>
       <View style={styles.settingRow}>
         <View style={styles.copy}>
           <Text style={styles.label}>自动旋转</Text>
@@ -28,7 +30,7 @@ export function AutoRotateSettings({ setting }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   panel: {
     backgroundColor: "#ffffff",
     borderColor: "#e2e8f0",

@@ -1,7 +1,8 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import { useEffect, useMemo, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import type { ToolRequestUserInputResponse } from "@codex-mobile/protocol/v2";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 
 import type { PendingUserInputRequest } from "@/types/codex";
 
@@ -12,6 +13,8 @@ type Props = {
 };
 
 export function UserInputRequestCard({ compact = false, request, onSubmit }: Props) {
+  const styles = useStyles();
+  const { isDark, color: themeColor } = useAppTheme();
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const questions = request?.params.questions ?? [];
   const canSubmit = useMemo(
@@ -50,7 +53,7 @@ export function UserInputRequestCard({ compact = false, request, onSubmit }: Pro
     <View style={[styles.card, compact && styles.compactCard]}>
       <View style={styles.header}>
         <View style={styles.iconWrap}>
-          <Ionicons color="#2454d6" name="help-buoy" size={18} />
+          <Ionicons color={themeColor("#2454d6")} name="help-buoy" size={18} />
         </View>
         <View style={styles.headerCopy}>
           <Text style={styles.title}>Codex 需要你确认</Text>
@@ -96,6 +99,7 @@ export function UserInputRequestCard({ compact = false, request, onSubmit }: Pro
                 secureTextEntry={question.isSecret}
                 style={styles.textInput}
                 value={question.options?.length ? (question.options.some((option) => option.label === selectedAnswer) ? "" : selectedAnswer) : selectedAnswer}
+                keyboardAppearance={isDark ? "dark" : "light"}
               />
             ) : null}
           </View>
@@ -109,7 +113,7 @@ export function UserInputRequestCard({ compact = false, request, onSubmit }: Pro
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   card: {
     backgroundColor: "#eef5ff",
     borderColor: "#b9d2ff",

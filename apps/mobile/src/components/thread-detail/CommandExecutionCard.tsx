@@ -1,5 +1,6 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import { Ionicons } from "@expo/vector-icons";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import type { TimelineEntry } from "@/lib/threadFormat";
 
@@ -9,6 +10,8 @@ type Props = {
 };
 
 export function CommandExecutionCard({ entry, onOpenOutput }: Props) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   const isRunning = entry.commandStatus === "inProgress";
   const isFailed = entry.commandStatus === "failed" || entry.commandStatus === "declined" || Boolean(entry.commandExitCode && entry.commandExitCode !== 0);
   const isSuccess = entry.commandStatus === "completed" && (entry.commandExitCode === 0 || entry.commandExitCode === null || entry.commandExitCode === undefined);
@@ -23,9 +26,9 @@ export function CommandExecutionCard({ entry, onOpenOutput }: Props) {
     >
       <View style={styles.commandIcon}>
         {isRunning ? (
-          <ActivityIndicator color="#7aa7ff" size="small" />
+          <ActivityIndicator color={themeColor("#7aa7ff")} size="small" />
         ) : (
-          <Ionicons color={getIconColor(isFailed, isSuccess)} name={getIconName(isFailed, isSuccess)} size={17} />
+          <Ionicons color={themeColor(getIconColor(isFailed, isSuccess))} name={getIconName(isFailed, isSuccess)} size={17} />
         )}
       </View>
       <View style={styles.commandCopy}>
@@ -48,7 +51,7 @@ export function CommandExecutionCard({ entry, onOpenOutput }: Props) {
       </View>
       {canOpenOutput ? (
         <View style={styles.commandIcon}>
-          <Ionicons color="#8a94a6" name="chevron-forward" size={16} />
+          <Ionicons color={themeColor("#8a94a6")} name="chevron-forward" size={16} />
         </View>
       ) : null}
     </Pressable>
@@ -94,7 +97,7 @@ function formatCommandStatus(entry: TimelineEntry) {
   }
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   commandCard: {
     alignItems: "center",
     backgroundColor: "#15171a",

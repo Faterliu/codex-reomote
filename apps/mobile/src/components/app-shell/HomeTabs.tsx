@@ -1,13 +1,14 @@
-import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
+import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 
 import { ApprovalBanner } from "@/components/ApprovalBanner";
-import { AutoRotateSettings } from "@/components/app-shell/AutoRotateSettings";
-import { ChatGptWebPanel } from "@/components/app-shell/ChatGptWebPanel";
+import { AppSettingsPanel } from "@/components/app-shell/AppSettingsPanel";
 import { ConnectionPanel } from "@/components/ConnectionPanel";
 import { EventLog } from "@/components/EventLog";
 import { ThreadList } from "@/components/ThreadList";
 import { UserInputRequestCard } from "@/components/user-input/UserInputRequestCard";
 import type { AutoRotateSettingController } from "@/hooks/useAutoRotateSetting";
+import type { NightModeSettingController } from "@/hooks/useNightModeSetting";
 import type { CodexAppServerState } from "@/hooks/useCodexAppServer";
 import type { Thread } from "@codex-mobile/protocol/v2";
 
@@ -22,15 +23,18 @@ type Props = {
   onCheckForUpdates: () => void;
   isCheckingForUpdate: boolean;
   autoRotateSetting: AutoRotateSettingController;
+  nightModeSetting: NightModeSettingController;
 };
 
-export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTabChange, onCheckForUpdates, isCheckingForUpdate, autoRotateSetting }: Props) {
+export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTabChange, onCheckForUpdates, isCheckingForUpdate, autoRotateSetting, nightModeSetting }: Props) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   return (
     <View style={styles.shell}>
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Codex</Text>
-          <Text style={styles.subtitle}>{activeTab === "connection" ? "连接管理" : activeTab === "threads" ? "会话" : "ChatGPT 网页"}</Text>
+          <Text style={styles.subtitle}>{activeTab === "connection" ? "连接管理" : activeTab === "threads" ? "会话" : "设置"}</Text>
         </View>
         <View style={styles.headerActions}>
           {Platform.OS === "android" ? (
@@ -40,11 +44,11 @@ export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTab
               onPress={onCheckForUpdates}
               style={[styles.updateCheckButton, isCheckingForUpdate && styles.updateCheckButtonDisabled]}
             >
-              {isCheckingForUpdate ? <ActivityIndicator color="#2454d6" size="small" /> : null}
+              {isCheckingForUpdate ? <ActivityIndicator color={themeColor("#2454d6")} size="small" /> : null}
               <Text style={styles.updateCheckButtonText}>{isCheckingForUpdate ? "检查中…" : "检查更新"}</Text>
             </Pressable>
           ) : null}
-          {activeTab !== "chatgpt" ? (
+          {activeTab !== "settings" ? (
             <Text style={[styles.headerBadge, codex.state === "connected" && styles.headerBadgeConnected]}>{codex.state}</Text>
           ) : null}
         </View>
@@ -54,7 +58,7 @@ export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTab
         contentContainerStyle={styles.content}
         refreshControl={
           activeTab === "threads" ? (
-            <RefreshControl refreshing={codex.isRefreshingThreads} tintColor="#2454d6" onRefresh={codex.refreshThreads} />
+            <RefreshControl refreshing={codex.isRefreshingThreads} tintColor={themeColor("#2454d6")} onRefresh={codex.refreshThreads} />
           ) : undefined
         }
       >
@@ -68,7 +72,6 @@ export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTab
               onDisconnect={codex.disconnect}
               onProbe={codex.probeReadiness}
             />
-            <AutoRotateSettings setting={autoRotateSetting} />
             <ApprovalBanner approval={codex.approval} compact onResolve={codex.resolveApproval} />
             <UserInputRequestCard compact request={codex.userInputRequest} onSubmit={codex.resolveUserInputRequest} />
             <EventLog events={codex.events} logs={codex.logs} />
@@ -90,7 +93,7 @@ export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTab
             />
           </>
         ) : (
-          <ChatGptWebPanel />
+          <AppSettingsPanel autoRotateSetting={autoRotateSetting} nightModeSetting={nightModeSetting} />
         )}
       </ScrollView>
 
@@ -99,7 +102,7 @@ export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTab
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   shell: {
     flex: 1,
   },

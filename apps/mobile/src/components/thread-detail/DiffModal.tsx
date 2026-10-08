@@ -1,5 +1,6 @@
+import { createThemedStyles } from "@/theme/AppTheme";
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 
 import type { TimelineFileChange } from "@/lib/threadFormat";
 
@@ -16,6 +17,7 @@ type Props = {
 };
 
 export function DiffModal({ fileChange, fileChanges = null, workspacePath, onClose }: Props) {
+  const styles = useStyles();
   const [lineLimit, setLineLimit] = useState(DIFF_INITIAL_LINE_LIMIT);
   const allFileChanges = fileChanges?.length ? fileChanges : [];
   const isAllDiffMode = allFileChanges.length > 0;
@@ -67,9 +69,9 @@ export function DiffModal({ fileChange, fileChanges = null, workspacePath, onClo
                   <DiffSubtitle fileChange={change} />
                   <View style={styles.fileDiffLines}>
                     {(change.diff ? change.diff.split("\n") : ["暂无 diff"]).map((line, index) => (
-                      <View key={`${index}:${line.slice(0, 16)}`} style={[styles.diffLine, getDiffLineStyle(line)]}>
+                      <View key={`${index}:${line.slice(0, 16)}`} style={[styles.diffLine, getDiffLineStyle(line, styles)]}>
                         <Text style={styles.diffLineNumber}>{index + 1}</Text>
-                        <Text style={[styles.allDiffLineText, getDiffTextStyle(line)]}>{line || " "}</Text>
+                        <Text style={[styles.allDiffLineText, getDiffTextStyle(line, styles)]}>{line || " "}</Text>
                       </View>
                     ))}
                   </View>
@@ -80,9 +82,9 @@ export function DiffModal({ fileChange, fileChanges = null, workspacePath, onClo
             <ScrollView horizontal style={styles.diffHorizontal}>
               <ScrollView contentContainerStyle={styles.diffContent}>
                 {visibleLines.map((line, index) => (
-                  <View key={`${index}:${line.slice(0, 16)}`} style={[styles.diffLine, getDiffLineStyle(line)]}>
+                  <View key={`${index}:${line.slice(0, 16)}`} style={[styles.diffLine, getDiffLineStyle(line, styles)]}>
                     <Text style={styles.diffLineNumber}>{index + 1}</Text>
-                    <Text style={[styles.diffLineText, getDiffTextStyle(line)]}>{line || " "}</Text>
+                    <Text style={[styles.diffLineText, getDiffTextStyle(line, styles)]}>{line || " "}</Text>
                   </View>
                 ))}
                 {lineLimit < diffLines.length ? (
@@ -100,11 +102,12 @@ export function DiffModal({ fileChange, fileChanges = null, workspacePath, onClo
 }
 
 function DiffSubtitle({ fileChange }: { fileChange: TimelineFileChange }) {
+  const styles = useStyles();
   const hasLineStats = fileChange.additions > 0 || fileChange.deletions > 0;
 
   return (
     <Text style={styles.diffSubtitle}>
-      <Text style={[styles.statusPill, getStatusPillStyle(fileChange.status)]}>{fileChange.kind}</Text>
+      <Text style={[styles.statusPill, getStatusPillStyle(fileChange.status, styles)]}>{fileChange.kind}</Text>
       {hasLineStats ? (
         <>
           <Text> </Text>
@@ -117,7 +120,7 @@ function DiffSubtitle({ fileChange }: { fileChange: TimelineFileChange }) {
   );
 }
 
-function getDiffLineStyle(line: string) {
+function getDiffLineStyle(line: string, styles: ReturnType<typeof useStyles>) {
   if (line.startsWith("+") && !line.startsWith("+++")) {
     return styles.diffLineAdd;
   }
@@ -133,7 +136,7 @@ function getDiffLineStyle(line: string) {
   return null;
 }
 
-function getDiffTextStyle(line: string) {
+function getDiffTextStyle(line: string, styles: ReturnType<typeof useStyles>) {
   if (line.startsWith("+") && !line.startsWith("+++")) {
     return styles.diffTextAdd;
   }
@@ -149,7 +152,7 @@ function getDiffTextStyle(line: string) {
   return null;
 }
 
-function getStatusPillStyle(status: TimelineFileChange["status"]) {
+function getStatusPillStyle(status: TimelineFileChange["status"], styles: ReturnType<typeof useStyles>) {
   switch (status) {
     case "added":
       return styles.statusAdded;
@@ -162,7 +165,7 @@ function getStatusPillStyle(status: TimelineFileChange["status"]) {
   }
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   modalBackdrop: {
     backgroundColor: "rgba(0, 0, 0, 0.35)",
     flex: 1,

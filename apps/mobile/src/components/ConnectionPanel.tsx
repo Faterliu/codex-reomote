@@ -1,5 +1,6 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import { useEffect, useRef, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, Text, TextInput, View } from "react-native";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 
 import {
@@ -20,6 +21,8 @@ type Props = {
 };
 
 export function ConnectionPanel({ state, readiness, recentError = null, onConnect, onDisconnect, onProbe }: Props) {
+  const styles = useStyles();
+  const { isDark } = useAppTheme();
   const [url, setUrl] = useState(DEFAULT_APP_SERVER_URL);
   const [token, setToken] = useState("");
   const [storageStatus, setStorageStatus] = useState<string | null>(null);
@@ -154,6 +157,7 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
         placeholder={DEFAULT_APP_SERVER_URL}
         style={styles.input}
         value={url}
+        keyboardAppearance={isDark ? "dark" : "light"}
       />
       <TextInput
         autoCapitalize="none"
@@ -163,6 +167,7 @@ export function ConnectionPanel({ state, readiness, recentError = null, onConnec
         secureTextEntry
         style={styles.input}
         value={token}
+        keyboardAppearance={isDark ? "dark" : "light"}
       />
       {readiness ? (
         <Text style={[styles.readiness, readiness.ok ? styles.readinessOk : styles.readinessError]}>
@@ -242,6 +247,7 @@ type ConnectionQrScannerModalProps = {
 };
 
 function ConnectionQrScannerModal({ visible, onClose, onScanned }: ConnectionQrScannerModalProps) {
+  const styles = useStyles();
   return (
     <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
       <View style={styles.scannerBackdrop}>
@@ -290,7 +296,7 @@ function getStateLabel(state: ConnectionState) {
   return "未连接";
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   panel: {
     gap: 10,
     padding: 14,

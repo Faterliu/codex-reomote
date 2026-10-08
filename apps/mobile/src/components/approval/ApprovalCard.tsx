@@ -1,6 +1,7 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import { useMemo } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import type { PendingApproval } from "@/types/codex";
 
@@ -13,6 +14,8 @@ type Props = {
 };
 
 export function ApprovalCard({ approval, compact = false, onResolve }: Props) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   const display = useMemo(() => (approval ? formatApprovalDisplay(approval) : null), [approval]);
 
   if (!approval || !display) {
@@ -23,7 +26,7 @@ export function ApprovalCard({ approval, compact = false, onResolve }: Props) {
     <View style={[styles.card, compact && styles.cardCompact]}>
       <View style={styles.header}>
         <View style={[styles.iconWrap, display.tone === "file" && styles.fileIconWrap, display.tone === "permission" && styles.permissionIconWrap]}>
-          <Ionicons color={getIconColor(display.tone)} name={getIconName(display.tone)} size={18} />
+          <Ionicons color={themeColor(getIconColor(display.tone))} name={getIconName(display.tone)} size={18} />
         </View>
         <View style={styles.copy}>
           <Text style={styles.title}>{display.title}</Text>
@@ -72,7 +75,7 @@ function getIconColor(tone: "command" | "file" | "permission" | "legacy") {
   }
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   card: {
     backgroundColor: "#fff8eb",
     borderColor: "#f0c77a",

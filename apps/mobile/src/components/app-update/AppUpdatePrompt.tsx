@@ -1,4 +1,5 @@
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 
 import type { AppUpdaterController } from "@/hooks/useAppUpdater";
 
@@ -7,6 +8,8 @@ type AppUpdatePromptProps = {
 };
 
 export function AppUpdatePrompt({ controller }: AppUpdatePromptProps) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   const { update, status, progress, error } = controller;
 
   if (!update || !status) {
@@ -78,7 +81,7 @@ export function AppUpdatePrompt({ controller }: AppUpdatePromptProps) {
             onPress={() => void controller.installOrDownload()}
             style={({ pressed }) => [styles.primaryButton, pressed && !isDownloading ? styles.pressed : null]}
           >
-            {isDownloading ? <ActivityIndicator color="#ffffff" size="small" /> : null}
+            {isDownloading ? <ActivityIndicator color={themeColor("#ffffff")} size="small" /> : null}
             <Text style={styles.primaryButtonText}>{actionLabel}</Text>
           </Pressable>
 
@@ -93,7 +96,7 @@ export function AppUpdatePrompt({ controller }: AppUpdatePromptProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   overlay: {
     alignItems: "center",
     backgroundColor: "rgba(12, 20, 30, 0.48)",

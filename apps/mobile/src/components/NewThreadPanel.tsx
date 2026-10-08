@@ -1,5 +1,6 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 
 type Props = {
   defaultCwd?: string | null;
@@ -9,6 +10,8 @@ type Props = {
 };
 
 export function NewThreadPanel({ defaultCwd = null, recentCwds, isCreating = false, onCreate }: Props) {
+  const styles = useStyles();
+  const { isDark } = useAppTheme();
   const [cwd, setCwd] = useState(defaultCwd ?? "");
   const [message, setMessage] = useState("");
   const canCreate = Boolean(cwd.trim() && message.trim() && !isCreating);
@@ -39,6 +42,7 @@ export function NewThreadPanel({ defaultCwd = null, recentCwds, isCreating = fal
         placeholder="/path/to/workspace"
         style={styles.input}
         value={cwd}
+        keyboardAppearance={isDark ? "dark" : "light"}
       />
       {cwdOptions.length > 0 ? (
         <View style={styles.cwdOptions}>
@@ -58,6 +62,7 @@ export function NewThreadPanel({ defaultCwd = null, recentCwds, isCreating = fal
         style={[styles.input, styles.messageInput]}
         textAlignVertical="top"
         value={message}
+        keyboardAppearance={isDark ? "dark" : "light"}
       />
       <Pressable disabled={!canCreate} onPress={submit} style={[styles.createButton, !canCreate && styles.createButtonDisabled]}>
         <Text style={styles.createText}>{isCreating ? "创建中..." : "开始"}</Text>
@@ -66,7 +71,7 @@ export function NewThreadPanel({ defaultCwd = null, recentCwds, isCreating = fal
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   panel: {
     backgroundColor: "#ffffff",
     borderColor: "#e2e8f0",

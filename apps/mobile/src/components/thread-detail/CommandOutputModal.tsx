@@ -1,6 +1,7 @@
+import { createThemedStyles } from "@/theme/AppTheme";
 import { useEffect, useMemo, useState } from "react";
 import * as Clipboard from "expo-clipboard";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 
 import type { TimelineEntry } from "@/lib/threadFormat";
 
@@ -13,6 +14,7 @@ type Props = {
 };
 
 export function CommandOutputModal({ entry, onClose }: Props) {
+  const styles = useStyles();
   const [lineLimit, setLineLimit] = useState(OUTPUT_INITIAL_LINE_LIMIT);
   const output = entry?.commandOutput || entry?.body || "";
   const outputLines = useMemo(() => (output ? output.split("\n") : ["暂无输出"]), [output]);
@@ -104,7 +106,7 @@ function formatCommandStatus(entry: TimelineEntry | null) {
   }
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   modalBackdrop: {
     backgroundColor: "rgba(0, 0, 0, 0.35)",
     flex: 1,

@@ -1,5 +1,6 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import { useCallback, useMemo, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Modal, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 
@@ -63,6 +64,8 @@ export function ComposerToolsModal({
   onSelectReasoningEffort,
   onSelectPermissionMode,
 }: Props) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   const [activePluginId, setActivePluginId] = useState<string | null>(null);
   const { height: windowHeight } = useWindowDimensions();
   const sheetHeight = Math.min(640, Math.max(360, windowHeight * 0.78));
@@ -131,14 +134,14 @@ export function ComposerToolsModal({
           return (
             <View style={styles.quickGrid}>
               <Pressable onPress={() => void onPickImages()} style={styles.quickAction}>
-                <Ionicons color="#2454d6" name="image-outline" size={20} />
+                <Ionicons color={themeColor("#2454d6")} name="image-outline" size={20} />
                 <View style={styles.quickTextWrap}>
                   <Text style={styles.actionTitle}>图片</Text>
                   <Text style={styles.actionText}>从手机相册选择</Text>
                 </View>
               </Pressable>
               <Pressable onPress={onRunCommand} style={styles.quickAction}>
-                <Ionicons color="#2454d6" name="terminal-outline" size={20} />
+                <Ionicons color={themeColor("#2454d6")} name="terminal-outline" size={20} />
                 <View style={styles.quickTextWrap}>
                   <Text style={styles.actionTitle}>命令</Text>
                   <Text style={styles.actionText}>执行 shell command</Text>
@@ -188,7 +191,7 @@ export function ComposerToolsModal({
                 >
                   <View style={styles.permissionTitleRow}>
                     <Text style={[styles.actionTitle, selectedPermissionModeId === mode.id && styles.permissionTitleActive]}>{mode.label}</Text>
-                    {selectedPermissionModeId === mode.id ? <Ionicons color={mode.id === "full" ? "#b42318" : "#2454d6"} name="checkmark-circle" size={17} /> : null}
+                    {selectedPermissionModeId === mode.id ? <Ionicons color={themeColor(mode.id === "full" ? "#b42318" : "#2454d6")} name="checkmark-circle" size={17} /> : null}
                   </View>
                   <Text style={styles.actionText}>{mode.description}</Text>
                 </Pressable>
@@ -203,7 +206,7 @@ export function ComposerToolsModal({
                     <Text style={[styles.actionTitle, selectedPermissionModeId === profile.id && styles.permissionTitleActive]}>
                       {profile.description || profile.id}
                     </Text>
-                    {selectedPermissionModeId === profile.id ? <Ionicons color="#2454d6" name="checkmark-circle" size={17} /> : null}
+                    {selectedPermissionModeId === profile.id ? <Ionicons color={themeColor("#2454d6")} name="checkmark-circle" size={17} /> : null}
                   </View>
                   <Text style={styles.actionText}>{profile.id}</Text>
                 </Pressable>
@@ -281,6 +284,8 @@ export function ComposerToolsModal({
       }
     },
     [
+      styles,
+      themeColor,
       activePluginId,
       models,
       onPickImages,
@@ -352,6 +357,7 @@ function keyExtractor(item: ToolListItem) {
 }
 
 function ToolItemSeparator() {
+  const styles = useStyles();
   return <View style={styles.separator} />;
 }
 
@@ -380,7 +386,7 @@ function rateLimitSignature(display: RateLimitsDisplay) {
   return `${display.planLabel ?? ""}#${display.resetCreditsLabel ?? ""}`;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   modalRoot: {
     flex: 1,
     justifyContent: "flex-end",

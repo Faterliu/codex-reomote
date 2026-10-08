@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { Alert, KeyboardAvoidingView, Platform, StyleSheet, ToastAndroid } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, ToastAndroid } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { ThreadDetail } from "@/components/ThreadDetail";
@@ -8,6 +8,8 @@ import { AppUpdatePrompt } from "@/components/app-update/AppUpdatePrompt";
 import { HomeTabs } from "@/components/app-shell/HomeTabs";
 import { loadSavedConnectionConfig } from "@/hooks/codex-app-server/connectionStorage";
 import { useAutoRotateSetting } from "@/hooks/useAutoRotateSetting";
+import { useNightModeSetting, type NightModeSettingController } from "@/hooks/useNightModeSetting";
+import { AppThemeProvider, createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import type { RootTab } from "@/components/app-shell/RootTabBar";
 import { useCodexAppServer } from "@/hooks/useCodexAppServer";
 import type { Thread } from "@codex-mobile/protocol/v2";
@@ -15,6 +17,18 @@ import type { ComposerImageAttachment } from "@/types/composer";
 import { useAppUpdater } from "@/hooks/useAppUpdater";
 
 export default function App() {
+  const nightModeSetting = useNightModeSetting();
+  return (
+    <AppThemeProvider isDark={nightModeSetting.enabled}>
+      <AppContent nightModeSetting={nightModeSetting} />
+    </AppThemeProvider>
+  );
+}
+
+function AppContent({ nightModeSetting }: { nightModeSetting: NightModeSettingController }) {
+  const styles = useStyles();
+  const { isDark } = useAppTheme();
+
   const codex = useCodexAppServer();
   const appUpdater = useAppUpdater();
   const autoRotateSetting = useAutoRotateSetting();
@@ -113,7 +127,7 @@ export default function App() {
     return (
       <SafeAreaProvider>
         <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
-          <StatusBar style="dark" />
+          <StatusBar style={isDark ? "light" : "dark"} />
           <AppUpdatePrompt controller={appUpdater} />
           {/* 详情页底部输入框贴近屏幕底部，键盘出现时需要由 RN 层主动让出空间。 */}
           <KeyboardAvoidingView
@@ -179,7 +193,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <SafeAreaView edges={["top", "right", "bottom", "left"]} style={styles.safeArea}>
-        <StatusBar style="dark" />
+        <StatusBar style={isDark ? "light" : "dark"} />
         <AppUpdatePrompt controller={appUpdater} />
         <HomeTabs
           activeTab={activeTab}
@@ -187,6 +201,7 @@ export default function App() {
           isCheckingForUpdate={appUpdater.isCheckingForUpdate}
           onCheckForUpdates={() => void handleCheckForUpdates()}
           autoRotateSetting={autoRotateSetting}
+          nightModeSetting={nightModeSetting}
           onCreateThread={startDraftThread}
           onOpenThread={openThread}
           onTabChange={setActiveTab}
@@ -200,7 +215,7 @@ function shouldAutoConnect(state: ReturnType<typeof useCodexAppServer>["state"])
   return state === "idle" || state === "closed" || state === "error";
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   safeArea: {
     backgroundColor: "#f4f7fb",
     flex: 1,

@@ -1,5 +1,6 @@
+import { createThemedStyles } from "@/theme/AppTheme";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import type { TimelineFileChange } from "@/lib/threadFormat";
 
@@ -22,6 +23,7 @@ export function FileChangeCard({
   onOpenAllFileChanges,
   onOpenFileChange,
 }: Props) {
+  const styles = useStyles();
   const [expanded, setExpanded] = useState(false);
   const totals = changes.reduce(
     (next, change) => ({
@@ -48,7 +50,7 @@ export function FileChangeCard({
         }}
         style={styles.compactFileCard}
       >
-        <Text style={[styles.statusPill, getStatusPillStyle(lastChange.status)]}>{lastChange.kind}</Text>
+        <Text style={[styles.statusPill, getStatusPillStyle(lastChange.status, styles)]}>{lastChange.kind}</Text>
         <Text numberOfLines={1} style={styles.compactFileTitle}>
           最后编辑 {formatWorkspaceRelativePath(lastChange.path, workspacePath)}
         </Text>
@@ -80,7 +82,7 @@ export function FileChangeCard({
       <View style={styles.fileRows}>
         {visibleChanges.map((change, index) => (
           <Pressable key={`${change.path}:${index}`} onPress={() => onOpenFileChange(change)} style={styles.fileRow}>
-            <Text style={[styles.statusPill, getStatusPillStyle(change.status)]}>{change.kind}</Text>
+            <Text style={[styles.statusPill, getStatusPillStyle(change.status, styles)]}>{change.kind}</Text>
             <Text numberOfLines={1} style={styles.filePath}>
               {formatWorkspaceRelativePath(change.path, workspacePath)}
             </Text>
@@ -103,7 +105,7 @@ export function FileChangeCard({
   );
 }
 
-function getStatusPillStyle(status: TimelineFileChange["status"]) {
+function getStatusPillStyle(status: TimelineFileChange["status"], styles: ReturnType<typeof useStyles>) {
   switch (status) {
     case "added":
       return styles.statusAdded;
@@ -116,7 +118,7 @@ function getStatusPillStyle(status: TimelineFileChange["status"]) {
   }
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   compactFileCard: {
     alignItems: "center",
     backgroundColor: "#ffffff",

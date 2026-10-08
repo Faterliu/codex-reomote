@@ -1,4 +1,5 @@
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { createThemedStyles } from "@/theme/AppTheme";
+import { Image, Pressable, Text, View } from "react-native";
 
 import type { TimelineAttachment, TimelineEntry } from "@/lib/threadFormat";
 
@@ -10,6 +11,7 @@ type Props = {
 };
 
 export function AttachmentGallery({ entry, onOpenAttachment }: Props) {
+  const styles = useStyles();
   return (
     <View style={styles.attachmentGallery}>
       {entry.attachments?.map((attachment, index) => (
@@ -22,7 +24,7 @@ export function AttachmentGallery({ entry, onOpenAttachment }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   attachmentGallery: {
     gap: 8,
   },

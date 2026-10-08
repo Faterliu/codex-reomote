@@ -1,5 +1,6 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import { useEffect, useState } from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, Text, TextInput, View } from "react-native";
 
 type Props = {
   currentName: string;
@@ -13,6 +14,8 @@ type Props = {
 };
 
 export function ThreadActionsModal({ currentName, isBusy = false, canReview = true, visible, onArchive, onClose, onRename, onReview }: Props) {
+  const styles = useStyles();
+  const { isDark, color: themeColor } = useAppTheme();
   const [name, setName] = useState(currentName);
 
   useEffect(() => {
@@ -51,7 +54,8 @@ export function ThreadActionsModal({ currentName, isBusy = false, canReview = tr
             <Text style={styles.title}>会话操作</Text>
             <View style={styles.renameBox}>
               <Text style={styles.label}>名称</Text>
-              <TextInput onChangeText={setName} placeholder="输入会话名称" placeholderTextColor="#526071" style={styles.input} value={name} />
+              <TextInput onChangeText={setName} placeholder="输入会话名称" placeholderTextColor={themeColor("#526071")} style={styles.input} value={name}
+              keyboardAppearance={isDark ? "dark" : "light"} />
               <Pressable disabled={!name.trim() || isBusy} onPress={() => void submitRename()} style={[styles.primaryButton, (!name.trim() || isBusy) && styles.disabled]}>
                 <Text style={styles.primaryText}>保存名称</Text>
               </Pressable>
@@ -70,7 +74,7 @@ export function ThreadActionsModal({ currentName, isBusy = false, canReview = tr
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   keyboardAvoider: {
     flex: 1,
   },

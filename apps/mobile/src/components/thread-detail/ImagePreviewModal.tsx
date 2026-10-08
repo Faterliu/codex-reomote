@@ -1,5 +1,6 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import { Ionicons } from "@expo/vector-icons";
-import { Image, Modal, Pressable, StyleSheet, View } from "react-native";
+import { Image, Modal, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { TimelineAttachment } from "@/lib/threadFormat";
@@ -12,6 +13,8 @@ type Props = {
 };
 
 export function ImagePreviewModal({ attachment, onClose }: Props) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   const insets = useSafeAreaInsets();
 
   return (
@@ -23,7 +26,7 @@ export function ImagePreviewModal({ attachment, onClose }: Props) {
           onPress={onClose}
           style={[styles.imagePreviewClose, { top: Math.max(insets.top + 12, 32) }]}
         >
-          <Ionicons color="#ffffff" name="close" size={24} />
+          <Ionicons color={themeColor("#ffffff")} name="close" size={24} />
         </Pressable>
         {attachment ? <Image resizeMode="contain" source={{ uri: normalizeImageUri(attachment.uri) }} style={styles.imagePreview} /> : null}
       </View>
@@ -31,7 +34,7 @@ export function ImagePreviewModal({ attachment, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   imagePreviewBackdrop: {
     alignItems: "center",
     backgroundColor: "rgba(0, 0, 0, 0.92)",

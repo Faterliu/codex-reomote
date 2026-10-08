@@ -1,6 +1,7 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import { useMemo, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 
 import type { Thread } from "@codex-mobile/protocol/v2";
 
@@ -29,6 +30,8 @@ export function ThreadList({
   onToggleArchived,
   onOpen,
 }: Props) {
+  const styles = useStyles();
+  const { isDark, color: themeColor } = useAppTheme();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [searchTerm, setSearchTerm] = useState("");
   const filteredThreads = useMemo(() => filterThreads(threads, searchTerm), [threads, searchTerm]);
@@ -49,7 +52,7 @@ export function ThreadList({
         <View style={styles.headerActions}>
           {!showArchived && onCreateThread ? (
             <Pressable accessibilityLabel="新建普通会话" onPress={onCreateThread} style={styles.headerIconButton}>
-              <Ionicons color="#304052" name="add" size={21} />
+              <Ionicons color={themeColor("#304052")} name="add" size={21} />
             </Pressable>
           ) : null}
           {onToggleArchived ? (
@@ -59,7 +62,7 @@ export function ThreadList({
               onPress={() => void onToggleArchived()}
               style={[styles.headerIconButton, showArchived && styles.archiveModeButton, isRefreshing && styles.refreshButtonDisabled]}
             >
-              <Ionicons color={showArchived ? "#2454d6" : "#304052"} name={showArchived ? "arrow-back" : "archive-outline"} size={18} />
+              <Ionicons color={themeColor(showArchived ? "#2454d6" : "#304052")} name={showArchived ? "arrow-back" : "archive-outline"} size={18} />
             </Pressable>
           ) : null}
           <Pressable
@@ -68,24 +71,25 @@ export function ThreadList({
             onPress={onRefresh}
             style={[styles.headerIconButton, isRefreshing && styles.refreshButtonDisabled]}
           >
-            {isRefreshing ? <ActivityIndicator color="#2454d6" size="small" /> : <Ionicons color="#304052" name="refresh" size={18} />}
+            {isRefreshing ? <ActivityIndicator color={themeColor("#2454d6")} size="small" /> : <Ionicons color={themeColor("#304052")} name="refresh" size={18} />}
           </Pressable>
         </View>
       </View>
       <View style={styles.searchBox}>
-        <Ionicons color="#8a94a6" name="search" size={17} />
+        <Ionicons color={themeColor("#8a94a6")} name="search" size={17} />
         <TextInput
           autoCapitalize="none"
           autoCorrect={false}
           onChangeText={setSearchTerm}
           placeholder="搜索标题、路径、日期"
-          placeholderTextColor="#8a94a6"
+          placeholderTextColor={themeColor("#8a94a6")}
           style={styles.searchInput}
           value={searchTerm}
+          keyboardAppearance={isDark ? "dark" : "light"}
         />
         {hasSearch ? (
           <Pressable onPress={() => setSearchTerm("")} style={styles.clearSearchButton}>
-            <Ionicons color="#8a94a6" name="close-circle" size={17} />
+            <Ionicons color={themeColor("#8a94a6")} name="close-circle" size={17} />
           </Pressable>
         ) : null}
       </View>
@@ -104,8 +108,8 @@ export function ThreadList({
         return (
           <View key={group.name} style={styles.group}>
             <Pressable onPress={() => toggleGroup(group.name)} style={styles.groupHeader}>
-              <Ionicons color="#516071" name={collapsed ? "chevron-forward" : "chevron-down"} size={16} />
-              <Ionicons color="#7b8797" name={collapsed ? "folder-outline" : "folder-open-outline"} size={17} />
+              <Ionicons color={themeColor("#516071")} name={collapsed ? "chevron-forward" : "chevron-down"} size={16} />
+              <Ionicons color={themeColor("#7b8797")} name={collapsed ? "folder-outline" : "folder-open-outline"} size={17} />
               <Text numberOfLines={1} style={styles.groupTitle}>
                 {group.name}
               </Text>
@@ -183,10 +187,12 @@ function normalizeSearchText(text: string) {
 }
 
 function ThreadStatusIcon({ thread }: { thread: Thread }) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   if (thread.status.type === "active") {
     return (
       <View style={styles.statusIconWrap}>
-        <ActivityIndicator color="#2454d6" size="small" />
+        <ActivityIndicator color={themeColor("#2454d6")} size="small" />
       </View>
     );
   }
@@ -194,7 +200,7 @@ function ThreadStatusIcon({ thread }: { thread: Thread }) {
   if (thread.status.type === "systemError") {
     return (
       <View style={styles.statusIconWrap}>
-        <Ionicons color="#d92d20" name="alert-circle" size={18} />
+        <Ionicons color={themeColor("#d92d20")} name="alert-circle" size={18} />
       </View>
     );
   }
@@ -308,7 +314,7 @@ function formatThreadListTime(seconds: number) {
   return `${month}月${day}日 ${hour}:${minute}`;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   panel: {
     gap: 6,
   },

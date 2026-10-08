@@ -1,6 +1,7 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import { Ionicons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import type { TimelineEntry } from "@/lib/threadFormat";
 
@@ -12,6 +13,8 @@ type Props = {
 };
 
 export function CommandGroupCard({ entry, onOpenOutput }: Props) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   const [expanded, setExpanded] = useState(false);
   const commandEntries = entry.commandEntries ?? [];
   const visibleEntries = expanded ? commandEntries : commandEntries.slice(0, DEFAULT_VISIBLE_COMMANDS);
@@ -22,7 +25,7 @@ export function CommandGroupCard({ entry, onOpenOutput }: Props) {
     <View style={[styles.card, failedCount > 0 && styles.cardFailed]}>
       <View style={styles.header}>
         <View style={[styles.iconBox, failedCount > 0 && styles.iconBoxFailed]}>
-          <Ionicons color={failedCount > 0 ? "#b42318" : "#2e6f40"} name={failedCount > 0 ? "alert-circle" : "terminal-outline"} size={18} />
+          <Ionicons color={themeColor(failedCount > 0 ? "#b42318" : "#2e6f40")} name={failedCount > 0 ? "alert-circle" : "terminal-outline"} size={18} />
         </View>
         <View style={styles.headerCopy}>
           <Text style={styles.title}>{entry.title}</Text>
@@ -38,7 +41,7 @@ export function CommandGroupCard({ entry, onOpenOutput }: Props) {
             onPress={() => onOpenOutput?.(commandEntry)}
             style={styles.commandRow}
           >
-            <Ionicons color={getCommandColor(commandEntry)} name={getCommandIcon(commandEntry)} size={15} />
+            <Ionicons color={themeColor(getCommandColor(commandEntry))} name={getCommandIcon(commandEntry)} size={15} />
             <View style={styles.commandCopy}>
               <Text numberOfLines={1} style={styles.commandText}>
                 {commandEntry.commandText || commandEntry.title}
@@ -51,7 +54,7 @@ export function CommandGroupCard({ entry, onOpenOutput }: Props) {
                 ) : null}
               </View>
             </View>
-            <Ionicons color="#8a94a6" name="chevron-forward" size={15} />
+            <Ionicons color={themeColor("#8a94a6")} name="chevron-forward" size={15} />
           </Pressable>
         ))}
       </View>
@@ -100,7 +103,7 @@ function formatCommandStatus(entry: TimelineEntry) {
   }
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   card: {
     backgroundColor: "#ffffff",
     borderColor: "#cfd7e3",

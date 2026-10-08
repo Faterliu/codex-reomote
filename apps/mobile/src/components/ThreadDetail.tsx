@@ -1,5 +1,6 @@
+import { createThemedStyles, useAppTheme } from "@/theme/AppTheme";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Image, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { Alert, Image, Modal, Pressable, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -125,6 +126,8 @@ export function ThreadDetail({
   forkingTurnId = null,
   isForkingThread = false,
 }: Props) {
+  const styles = useStyles();
+  const { isDark, color: themeColor } = useAppTheme();
   const [message, setMessage] = useState("");
   const [selectedFileChange, setSelectedFileChange] = useState<TimelineFileChange | null>(null);
   const [selectedFileChanges, setSelectedFileChanges] = useState<TimelineFileChange[] | null>(null);
@@ -383,7 +386,7 @@ export function ThreadDetail({
               onPress={onCreateNew}
               style={[styles.headerIconButton, isDraft && styles.headerActionButtonDisabled]}
             >
-              <Ionicons color="#304052" name="add" size={22} />
+              <Ionicons color={themeColor("#304052")} name="add" size={22} />
             </Pressable>
           ) : null}
           <Pressable
@@ -392,7 +395,7 @@ export function ThreadDetail({
             onPress={onRefresh}
             style={[styles.headerIconButton, (isRefreshing || isDraft || !thread) && styles.headerActionButtonDisabled]}
           >
-            <Ionicons color="#304052" name="refresh" size={19} />
+            <Ionicons color={themeColor("#304052")} name="refresh" size={19} />
           </Pressable>
           <Pressable disabled={isDraft || !thread} onPress={() => setActionsVisible(true)} style={[styles.headerIconButton, (isDraft || !thread) && styles.headerActionButtonDisabled]}>
             <Text style={styles.headerIconText}>⋯</Text>
@@ -430,9 +433,10 @@ export function ThreadDetail({
                   autoCorrect={false}
                   onChangeText={onChangeDraftCwd}
                   placeholder="/path/to/workspace"
-                  placeholderTextColor="#7b8797"
+                  placeholderTextColor={themeColor("#7b8797")}
                   style={styles.draftCwdInput}
                   value={draftCwd}
+                  keyboardAppearance={isDark ? "dark" : "light"}
                 />
                 {recentCwds.length ? (
                   <View style={styles.draftCwdOptions}>
@@ -598,7 +602,7 @@ export function ThreadDetail({
                   onPress={() => setImageAttachments((current) => current.filter((candidate) => candidate.id !== image.id))}
                   style={styles.imageRemoveButton}
                 >
-                  <Ionicons color="#ffffff" name="close" size={14} />
+                  <Ionicons color={themeColor("#ffffff")} name="close" size={14} />
                 </Pressable>
               </View>
             ))}
@@ -614,9 +618,10 @@ export function ThreadDetail({
             multiline
             onChangeText={setMessage}
             placeholder={getComposerPlaceholder({ isDraft, isResponding, isForkingThread })}
-            placeholderTextColor="#526071"
+            placeholderTextColor={themeColor("#526071")}
             style={styles.input}
             value={message}
+            keyboardAppearance={isDark ? "dark" : "light"}
           />
           <Pressable
             accessibilityLabel={isResponding && !shouldSteer ? "取消回复" : shouldSteer ? "追加消息" : "发送消息"}
@@ -630,7 +635,7 @@ export function ThreadDetail({
             ]}
           >
             <Ionicons
-              color="#ffffff"
+              color={themeColor("#ffffff")}
               name={isInterrupting || isForkingThread ? "hourglass-outline" : shouldSteer ? "arrow-up" : isResponding ? "stop" : "send"}
               size={19}
             />
@@ -642,6 +647,7 @@ export function ThreadDetail({
 }
 
 function MessageSeparator() {
+  const styles = useStyles();
   return <View style={styles.messageSeparator} />;
 }
 
@@ -659,6 +665,8 @@ function getComposerPlaceholder(options: { isDraft: boolean; isResponding: boole
 }
 
 function ActiveFileChangeDock({ fileChanges, onOpen }: { fileChanges: TimelineFileChange[]; onOpen: () => void }) {
+  const styles = useStyles();
+  const { color: themeColor } = useAppTheme();
   const totals = fileChanges.reduce(
     (next, change) => ({
       additions: next.additions + change.additions,
@@ -671,7 +679,7 @@ function ActiveFileChangeDock({ fileChanges, onOpen }: { fileChanges: TimelineFi
     <View style={styles.activeFileDockShell}>
       <Pressable accessibilityLabel="查看本轮所有文件改动" onPress={onOpen} style={styles.activeFileDock}>
         <View style={styles.activeFileDockTitleRow}>
-          <Ionicons color="#2454d6" name="git-compare-outline" size={17} />
+          <Ionicons color={themeColor("#2454d6")} name="git-compare-outline" size={17} />
           <Text numberOfLines={1} style={styles.activeFileDockTitle}>
             {fileChanges.length} 个文件已更改
           </Text>
@@ -700,6 +708,8 @@ function ShellCommandModal({
   onClose: () => void;
   onSubmit: () => void;
 }) {
+  const styles = useStyles();
+  const { isDark, color: themeColor } = useAppTheme();
   return (
     <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
       <View style={styles.modalBackdropEnd}>
@@ -712,9 +722,10 @@ function ShellCommandModal({
             multiline
             onChangeText={onChangeCommand}
             placeholder="例如 pnpm typecheck"
-            placeholderTextColor="#526071"
+            placeholderTextColor={themeColor("#526071")}
             style={styles.commandInput}
             value={command}
+            keyboardAppearance={isDark ? "dark" : "light"}
           />
           <View style={styles.commandActions}>
             <Pressable onPress={onClose} style={styles.commandCancelButton}>
@@ -772,7 +783,7 @@ function guessMimeType(uri: string) {
   return "image/jpeg";
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   panel: {
     backgroundColor: "#eaf0f7",
     flex: 1,

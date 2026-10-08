@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from "react-native";
+import { createThemedStyles } from "@/theme/AppTheme";
+import { Text, View } from "react-native";
 
 type Event = {
   id: string;
@@ -12,6 +13,7 @@ type Props = {
 };
 
 export function EventLog({ events, logs }: Props) {
+  const styles = useStyles();
   return (
     <View style={styles.panel}>
       <Text style={styles.title}>Socket 事件</Text>
@@ -25,7 +27,7 @@ export function EventLog({ events, logs }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   panel: {
     gap: 8,
   },
