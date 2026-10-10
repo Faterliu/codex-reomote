@@ -5,13 +5,17 @@ import type { NightModeSettingController } from "@/hooks/useNightModeSetting";
 import { createThemedStyles } from "@/theme/AppTheme";
 
 import { AutoRotateSettings } from "./AutoRotateSettings";
+import { DesktopControlPanel } from "./DesktopControlPanel";
 
 type Props = {
   autoRotateSetting: AutoRotateSettingController;
   nightModeSetting: NightModeSettingController;
+  controlTarget: string | null;
+  onStopDesktop: () => Promise<string>;
+  onRestartAppServer: () => Promise<string>;
 };
 
-export function AppSettingsPanel({ autoRotateSetting, nightModeSetting }: Props) {
+export function AppSettingsPanel({ autoRotateSetting, nightModeSetting, controlTarget, onStopDesktop, onRestartAppServer }: Props) {
   const styles = useStyles();
   return (
     <>
@@ -33,6 +37,7 @@ export function AppSettingsPanel({ autoRotateSetting, nightModeSetting }: Props)
           />
         </View>
       </View>
+      <DesktopControlPanel controlTarget={controlTarget} onStopDesktop={onStopDesktop} onRestartAppServer={onRestartAppServer} />
     </>
   );
 }

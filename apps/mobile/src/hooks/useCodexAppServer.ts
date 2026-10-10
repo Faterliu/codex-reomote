@@ -51,6 +51,7 @@ import {
 } from "./codex-app-server/api";
 import { buildPendingMessageBody, buildTurnInput } from "./codex-app-server/composer";
 import { compactRpcError, getErrorMessage } from "./codex-app-server/errorFormat";
+import { getProcessControlTarget, requestAppServerRestart, requestDesktopStop } from "./codex-app-server/desktopControl";
 import { applyLocalImageCache, downloadHostFile, hydrateLocalImageAttachments, uploadComposerImages } from "./codex-app-server/imageTransfer";
 import { handleNotification } from "./codex-app-server/notifications";
 import {
@@ -359,6 +360,27 @@ export function useCodexAppServer() {
     clearReconnectTimer(reconnectTimerRef);
     client.disconnect();
     setState("closed");
+  };
+
+  const stopDesktop = async () => {
+    const connection = lastConnectionRef.current;
+    if (!connection) throw new Error("请先在连接页指定需要控制的电脑。");
+    return requestDesktopStop(connection);
+  };
+
+  const restartAppServer = async () => {
+    const connection = lastConnectionRef.current;
+    if (!connection) throw new Error("请先在连接页指定需要重启服务的电脑。");
+    const revision = connectionRevisionRef.current;
+    manualDisconnectRef.current = false;
+    const message = await requestAppServerRestart(connection);
+    // HTTP 经 Relay 返回，重启期间 WebSocket 会断开；只为原连接重新握手，避免覆盖用户切换或断开。
+    if (revision === connectionRevisionRef.current && !manualDisconnectRef.current) {
+      clearReconnectTimer(reconnectTimerRef);
+      reconnectAttemptRef.current = 0;
+      client.connect(connection.socketUrl, connection.authToken);
+    }
+    return message;
   };
 
   const scheduleReconnect = () => {
@@ -1223,6 +1245,9 @@ export function useCodexAppServer() {
     hasMoreMessages: Boolean(olderTurnsCursor),
     connect,
     disconnect,
+    stopDesktop,
+    restartAppServer,
+    processControlTarget: getProcessControlTarget(lastConnectionRef.current),
     closeThread,
     probeReadiness,
     refreshThreads,

@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { buildUpstreamRequestOptions, describeUpstream } from "./app-server-relay-upstream.mjs";
+import { createProcessControlHandlers } from "./app-server-relay-desktop.mjs";
 
 const listenHost = process.env.RELAY_LISTEN_HOST || "0.0.0.0";
 const listenPort = Number(process.env.RELAY_LISTEN_PORT || "4501");
@@ -15,8 +16,20 @@ const upstreamUrl = new URL(process.env.UPSTREAM_WS_URL || "ws://127.0.0.1:4500"
 const upstreamUnixSocket = process.env.UPSTREAM_UNIX_SOCKET || "";
 const upstreamTokenFile = process.env.UPSTREAM_TOKEN_FILE || path.join(os.homedir(), ".codex", "app-server", "mobile.token");
 const upstreamToken = upstreamUnixSocket ? "" : fs.readFileSync(upstreamTokenFile, "utf8").trim();
+const control = createProcessControlHandlers({
+  relayToken, appServerPort: Number(upstreamUrl.port || "4500"), relayPort: listenPort, tokenFile: upstreamTokenFile,
+  canRestart: !upstreamUnixSocket && ["127.0.0.1", "localhost", "[::1]"].includes(upstreamUrl.hostname),
+});
 
 const server = http.createServer((req, res) => {
+  if (req.url?.split("?")[0] === "/desktop/stop") {
+    void control.stopDesktop(req, res);
+    return;
+  }
+  if (req.url?.split("?")[0] === "/app-server/restart") {
+    void control.restartAppServer(req, res);
+    return;
+  }
   if (req.url?.startsWith("/readyz")) {
     res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
     res.end("ok");

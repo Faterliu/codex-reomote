@@ -7,9 +7,12 @@
     不会停止 Relay(4501)、SSH 反向隧道或服务器上的 cloudflared。
 
     建议先在手机端断开连接，再运行本脚本。
+    Relay 使用 -LocalOnly，仅重启本机 App Server，保留 Relay 并跳过旧链路检查。
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File C:\file\app-codexapp\scripts\restart-phone-tunnel.ps1
+.EXAMPLE
+    .\scripts\restart-phone-tunnel.ps1 -LocalOnly
 #>
 
 [CmdletBinding()]
@@ -17,8 +20,10 @@ param(
   [string]$ServerHost = "8.148.73.94",
   [string]$ServerUser = "admin",
   [string]$PublicUrl = "wss://codex.yinxingye.space",
-  [int]$AppServerPort = 4500,
-  [int]$RelayPort = 4501
+  [ValidateRange(1,65535)][int]$AppServerPort = 4500,
+  [ValidateRange(1,65535)][int]$RelayPort = 4501,
+  [switch]$LocalOnly,
+  [string]$AppServerTokenFile = (Join-Path $env:USERPROFILE ".codex\app-server\mobile.token")
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,6 +31,19 @@ Set-StrictMode -Version Latest
 
 $StartScript = Join-Path $PSScriptRoot "start-phone-tunnel.ps1"
 $NetstatCommand = Join-Path $env:SystemRoot "System32\netstat.exe"
+$CodexCommand = Join-Path $env:APPDATA "npm\codex.cmd"
+$RuntimeRoot = Join-Path $env:LOCALAPPDATA "CodexMobilePhoneTunnel"
+
+# Relay 只重启上游，不检查旧 SSH/固定公网地址，也不重启承载 HTTP 请求的 Relay。
+if ($LocalOnly) {
+  foreach ($requiredPath in @($CodexCommand, $AppServerTokenFile)) {
+    if (-not (Test-Path -LiteralPath $requiredPath)) { throw "Required path is missing: $requiredPath" }
+  }
+  if ([string]::IsNullOrWhiteSpace((Get-Content -LiteralPath $AppServerTokenFile -Raw -Encoding utf8))) {
+    throw 'App Server token file is empty; restart cancelled.'
+  }
+  if ($AppServerPort -eq $RelayPort) { throw 'App Server and Relay must use different ports.' }
+}
 
 foreach ($requiredPath in @($StartScript, $NetstatCommand)) {
   if (-not (Test-Path -LiteralPath $requiredPath)) {
@@ -73,6 +91,12 @@ if ($listenerPids.Count -eq 0) {
   Write-Host "Codex App Server is not listening on 127.0.0.1:$AppServerPort; starting a fresh instance."
 } else {
   foreach ($listenerPid in $listenerPids) {
+    if ($LocalOnly) {
+      $listener = Get-CimInstance Win32_Process -Filter "ProcessId=$listenerPid"
+      if (-not $listener -or $listener.Name -ne 'codex.exe' -or $listener.CommandLine -notmatch '\bapp-server\b') {
+        throw "Port $AppServerPort is occupied by another program; restart cancelled."
+      }
+    }
     $process = Get-Process -Id $listenerPid -ErrorAction SilentlyContinue
     $processName = if ($process) { $process.ProcessName } else { "unknown" }
     Write-Host "Stopping the App Server listener (PID $listenerPid, process $processName)."
@@ -84,7 +108,23 @@ if ($listenerPids.Count -eq 0) {
   Write-Host "Codex App Server port $AppServerPort has been released."
 }
 
-Write-Host "Starting the local phone tunnel services..."
-& $StartScript -ServerHost $ServerHost -ServerUser $ServerUser -PublicUrl $PublicUrl -AppServerPort $AppServerPort -RelayPort $RelayPort -Once
+if ($LocalOnly) {
+  Write-Host "Starting the local App Server..."
+  $LogRoot = Join-Path $RuntimeRoot 'logs'
+  New-Item -ItemType Directory -Force -Path $LogRoot | Out-Null
+  $RunId = (Get-Date -Format 'yyyyMMdd-HHmmss') + "-$PID-restart"
+  Start-Process -FilePath $CodexCommand -ArgumentList @(
+    'app-server', '--listen', "ws://127.0.0.1:$AppServerPort", '--ws-auth', 'capability-token',
+    '--ws-token-file', ('"' + $AppServerTokenFile + '"')
+  ) -WorkingDirectory (Split-Path -Parent $PSScriptRoot) -WindowStyle Hidden `
+    -RedirectStandardOutput (Join-Path $LogRoot "$RunId.stdout.log") `
+    -RedirectStandardError (Join-Path $LogRoot "$RunId.stderr.log") | Out-Null
+  Wait-ForPortState -Port $AppServerPort -ShouldBeListening $true
+  $ready = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$AppServerPort/readyz" -TimeoutSec 5
+  if ($ready.StatusCode -ne 200) { throw 'Restarted App Server is not ready.' }
+} else {
+  Write-Host "Starting the local phone tunnel services..."
+  & $StartScript -ServerHost $ServerHost -ServerUser $ServerUser -PublicUrl $PublicUrl -AppServerPort $AppServerPort -RelayPort $RelayPort -Once
+}
 
 Write-Host "Restart complete. Reconnect the phone app, then open the affected task again."

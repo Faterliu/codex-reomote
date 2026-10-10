@@ -93,7 +93,7 @@ export function HomeTabs({ activeTab, codex, onCreateThread, onOpenThread, onTab
             />
           </>
         ) : (
-          <AppSettingsPanel autoRotateSetting={autoRotateSetting} nightModeSetting={nightModeSetting} />
+          <AppSettingsPanel autoRotateSetting={autoRotateSetting} nightModeSetting={nightModeSetting} controlTarget={codex.processControlTarget} onStopDesktop={codex.stopDesktop} onRestartAppServer={codex.restartAppServer} />
         )}
       </ScrollView>
 
