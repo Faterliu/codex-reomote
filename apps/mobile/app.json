@@ -2,7 +2,7 @@
     "expo":  {
                  "name":  "Codex",
                  "slug":  "mobile",
-                 "version":  "1.1.4",
+                 "version":  "1.1.5",
                  "orientation":  "default",
                  "icon":  "./assets/icon.png",
                  "userInterfaceStyle":  "automatic",
@@ -14,9 +14,9 @@
                                            }
                          },
                  "android":  {
-                                 "versionCode":  11,
+                                 "versionCode":  12,
                                  "adaptiveIcon":  {
-                                                      "backgroundColor":  "#101820",
+                                                      "backgroundColor":  "#101c27",
                                                       "foregroundImage":  "./assets/android-icon-foreground.png",
                                                       "backgroundImage":  "./assets/android-icon-background.png",
                                                       "monochromeImage":  "./assets/android-icon-monochrome.png"

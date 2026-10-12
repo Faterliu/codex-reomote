@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="mint" gradientUnits="userSpaceOnUse" x1="256" y1="208" x2="760" y2="816"><stop stop-color="#a6ffe2"/><stop offset=".5" stop-color="#3de4cb"/><stop offset="1" stop-color="#20c9bf"/></linearGradient>
+    <linearGradient id="night" x2="1" y2="1"><stop stop-color="#1b303b"/><stop offset="1" stop-color="#0a121b"/></linearGradient>
+  </defs>
+  
+  <g transform="translate(512 512) scale(0.88) translate(-512 -512)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M723.362482 336.637518 A248 248 0 1 0 723.362482 687.362482" stroke="url(#mint)" stroke-width="110"/>
+    <path d="M464 455 525 512 464 569 M579 569h59" stroke="#f5fdfa" stroke-width="40"/>
+  </g>
+</svg>
