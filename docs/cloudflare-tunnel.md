@@ -22,19 +22,26 @@ openssl rand -hex 32 > ~/.codex/app-server/mobile.token
 openssl rand -hex 32 > ~/.codex/app-server/relay.token
 ```
 
-## 2. 日常一键启动
+## 2. 本机服务与 Tunnel
 
-```bash
-PUBLIC_CODEX_MOBILE_URL=wss://your-domain.example.com pnpm start:cloudflare
+Windows 下先启动本机 App Server、Relay 的监控器：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-phone-tunnel.ps1 -LocalOnly
 ```
 
-这个命令会同时启动：
+该命令会启动或复用：
 
 - `codex app-server` on `127.0.0.1:4500`
 - `relay` on `127.0.0.1:4501`
-- `cloudflared tunnel`
 
-按 `Ctrl+C` 会一起停止。
+`-LocalOnly` 只检查本机服务，不依赖 SSH 反向转发。Cloudflare Tunnel 需要先按下方说明配置，再在另一个终端单独启动：
+
+```powershell
+cloudflared tunnel --config "$env:USERPROFILE\.cloudflared\codex-mobile.yml" run
+```
+
+本机服务通过 `scripts/stop-phone-tunnel.bat` 停止；Cloudflare 进程在其终端单独退出。日常双击启动及完整链路监控见 [手机链路自动恢复](phone-tunnel-recovery.md)。
 
 ## 3. 手机端填写
 

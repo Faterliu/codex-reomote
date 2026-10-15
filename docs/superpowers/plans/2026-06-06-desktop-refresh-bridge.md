@@ -1,4 +1,6 @@
-# Desktop Refresh Bridge Implementation Plan
+# Desktop Refresh Bridge Implementation Plan（已停用）
+
+> 历史设计记录：桌面刷新桥及对应脚本、测试和命令入口已于 2026-10-15 移除。以下内容仅保留设计背景，不再作为当前项目的可执行步骤。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

@@ -66,81 +66,22 @@ git push origin v0.1.0
 
 ## 一键启动
 
-### 本地局域网
-
-```bash
-pnpm start:lan
-```
-
-这个命令会同时启动：
-
-- `codex app-server`：监听 `127.0.0.1:4500`
-- 本地 relay：监听 `0.0.0.0:4501`
-- 终端二维码：手机 App 扫码后自动填入 URL 和 relay token
-
-首次运行会自动生成：
-
-```text
-~/.codex/app-server/mobile.token
-~/.codex/app-server/relay.token
-```
-
-手机和电脑必须在同一个 Wi-Fi / 局域网。如果自动识别的 IP 不对，可以手动指定：
-
-```bash
-CODEX_MOBILE_LAN_HOST=192.168.1.23 pnpm start:lan
-```
-
-### 外网 Cloudflare
-
-先创建 Cloudflare Tunnel 配置：
-
-```bash
-mkdir -p ~/.cloudflared
-cp docs/cloudflare-tunnel.yml.example ~/.cloudflared/codex-mobile.yml
-```
-
-把 `~/.cloudflared/codex-mobile.yml` 里的 `tunnel`、`credentials-file`、`hostname` 改成你自己的值，然后启动：
-
-```bash
-PUBLIC_CODEX_MOBILE_URL=wss://your-domain.example.com pnpm start:cloudflare
-```
-
-这个命令会同时启动：
-
-- `codex app-server`：监听 `127.0.0.1:4500`
-- 本地 relay：监听 `127.0.0.1:4501`
-- `cloudflared tunnel`
-- 终端二维码：手机 App 扫码后自动填入公网 URL 和 relay token
-
-公网只暴露 relay，不要直接暴露裸 `4500`。详细配置见 [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md)。
-
-### 电脑端与手机共用同一 App Server
-
-如果希望手机能可靠回答电脑端已启动任务的计划模式询问，需要让电脑端和手机连接**同一个** app-server，避免两个独立 App Server 竞争同一 thread 的写入权（报 `already has an active writer`）。
-
-```bash
-pnpm start:shared
-```
-
-这个命令会：
-
-- 复用 `127.0.0.1:4500` 上已有的 app-server；若没有就启动一个（`--ws-auth capability-token`）。
-- 启动本地 relay（`4501` → `4500`），手机扫码即可连接。
-- 打印电脑端接入命令，电脑端改用 CLI 接入同一 app-server，**不要**再开 Codex Desktop App：
+Windows 日常使用以下入口：
 
 ```powershell
-$env:CODEX_REMOTE_TOKEN = (Get-Content "$env:USERPROFILE\.codex\app-server\mobile.token" -Raw).Trim()
-codex --remote ws://127.0.0.1:4500 --remote-auth-token-env CODEX_REMOTE_TOKEN
+.\scripts\start-phone-tunnel.bat
 ```
 
-外网场景设置 `PUBLIC_CODEX_MOBILE_URL` 即进入 Cloudflare 模式（relay 只监听 `127.0.0.1` 并启动 `cloudflared`）：
+该脚本启动或复用本机 App Server（4500）和 Relay（4501），监控既有 SSH 反向转发及配置的公网连接，并在故障时自动恢复。重复双击会立即执行一次检查和修复。
 
-```bash
-PUBLIC_CODEX_MOBILE_URL=wss://your-domain.example.com pnpm start:shared
+手动重启 App Server 或停止本机链路：
+
+```powershell
+.\scripts\restart-phone-tunnel.bat
+.\scripts\stop-phone-tunnel.bat
 ```
 
-注意：此方案不保留 Codex Desktop App 原生 GUI，电脑端操作在终端 CLI 里完成；手机端能否回答电脑端任务在计划模式下发起的询问，仍需真机联调验证（依赖手机端已有的强制 `thread/resume` 重新附加逻辑）。
+自动恢复与只读检查见 [手机链路自动恢复](docs/phone-tunnel-recovery.md)。Cloudflare Tunnel 需单独管理，脚本不会自动启动 cloudflared，配置见 [Cloudflare Tunnel 接入](docs/cloudflare-tunnel.md)。
 
 ## 手动调试
 
@@ -156,7 +97,7 @@ codex app-server --listen ws://127.0.0.1:4500
 CODEX_APP_SERVER_URL=ws://127.0.0.1:4500 pnpm probe:app-server
 ```
 
-真机连接建议优先使用 `pnpm start:lan` 或 `pnpm start:cloudflare`，它们会通过 relay 处理 WebSocket token。
+真机连接使用上述 Windows 启动入口，通过 Relay 处理 WebSocket token。
 
 ## 当前能力
 
@@ -193,4 +134,7 @@ MIT
 2. 取消“清除当前连接”，避免误操作。
 
 [v1.0.4] 20261010
-1. 增加手机端关闭电脑端codex、重启电脑端app-server的按钮.
+1. 增加手机端关闭电脑端codex、重启电脑端app-server的按钮。
+
+[v1.0.5] 20261015
+1. 优化启动脚本的断联恢复能力。

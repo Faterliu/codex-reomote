@@ -471,11 +471,13 @@ thread runtime 状态更新。当前项目用它显示：
 
 ## 本项目启动命令
 
-后端 / relay / tunnel 一键启动：
+Windows 后端、Relay 与既有 SSH 链路监控：
 
-```bash
-pnpm start:cloudflare
+```powershell
+.\scripts\start-phone-tunnel.bat
 ```
+
+Cloudflare Tunnel 单独管理，见 `docs/cloudflare-tunnel.md`。
 
 Expo 真机调试：
 

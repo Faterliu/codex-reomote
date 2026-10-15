@@ -86,6 +86,12 @@ function Wait-ForPortState {
   throw "Timed out waiting for 127.0.0.1:$Port to $expectedState."
 }
 
+# 手动/手机重启与监控器恢复共用互斥锁，避免互相抢占端口。
+$repairLock = New-Object System.Threading.Mutex($false, "Global\CodexPhoneRepair-$AppServerPort-$RelayPort")
+$repairLocked = $false
+try {
+  try { $repairLocked = $repairLock.WaitOne([TimeSpan]::FromSeconds(30)) } catch [System.Threading.AbandonedMutexException] { $repairLocked = $true }
+  if (-not $repairLocked) { throw 'Another repair is still running; restart cancelled.' }
 $listenerPids = @(Get-AppServerListenerPids -Port $AppServerPort)
 if ($listenerPids.Count -eq 0) {
   Write-Host "Codex App Server is not listening on 127.0.0.1:$AppServerPort; starting a fresh instance."
@@ -128,3 +134,7 @@ if ($LocalOnly) {
 }
 
 Write-Host "Restart complete. Reconnect the phone app, then open the affected task again."
+} finally {
+  if ($repairLocked) { $repairLock.ReleaseMutex() }
+  $repairLock.Dispose()
+}

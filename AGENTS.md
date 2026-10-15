@@ -26,12 +26,12 @@
 pnpm install
 pnpm typecheck
 pnpm mobile
-pnpm start:cloudflare
 pnpm protocol:generate
 ```
 
 说明：
 
+- Windows 手机链路入口为 `scripts/start-phone-tunnel.bat`，自动恢复说明见 `docs/phone-tunnel-recovery.md`。Cloudflare Tunnel 需单独管理。
 - `pnpm mobile` 是 Expo Metro，默认端口是 `8097`。
 - Codex App Server WebSocket 常见端口是 `4500`。
 - 本地 relay 常见端口是 `4501`。
